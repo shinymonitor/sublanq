@@ -1,4 +1,6 @@
-def assemble(source):
+from emulate import * 
+
+def assemble(source, debug=False):
     program=[]
     vvm={}
     labels={}
@@ -6,21 +8,21 @@ def assemble(source):
     try:
         data, instructions=source[:source.index("__start__")], source[source.index("__start__")+1:]
     except:
-        print("Must have a __start__")
+        print("ASSEMBLER ERROR: Must have a __start__ symbol")
         return False
     for l in data:
         if l.split()[0] in ['Z', 'M', 'O', 'T1', 'T2'] or l.split()[0][0]=='C' or ':' in l.split()[0]:
-            print(f"Invalid variable name: {l}")
+            print(f"ASSEMBLER ERROR: Invalid variable name: {l}")
             return False
         if l.split()[0] in vvm:
-            print(f"Reassignment of varaible: {l}")
+            print(f"ASSEMBLER ERROR: Reassignment of varaible: {l}")
             return False
         if len(l.split())>2:
             vvm[l.split()[0]] = [int(x) for x in l.split()[1:]]
         elif len(l.split())==2:
             vvm[l.split()[0]] = int(l.split()[1])
         else:
-            print(f"Variable must have at least 1 assigned value: {l}")
+            print(f"ASSEMBLER ERROR: Variable must have at least 1 assigned value: {l}")
             return False
     n = 0
     for instruction in instructions:
@@ -31,19 +33,19 @@ def assemble(source):
             if inst==[]:
                 continue
         if inst[0] in ['zer', 'inc', 'dec', 'neg', 'jmp', 'inp', 'out'] and len(inst)!=2 or inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'drd', 'dwt', 'jez', 'jlz', 'jgz'] and len(inst)!=3 or inst[0]=='hlt' and len(inst)!=1:
-            print(f"Incorrect number of arguments given: {instruction}")
+            print(f"ASSEMBLER ERROR: Incorrect number of arguments given: {instruction}")
             return False
         if inst[0] in ['zer', 'inc', 'dec', 'neg', 'add', 'sub', 'mul', 'div', 'mod', 'drd', 'dwt', 'inp'] and inst[-1] not in vvm:
-            print(f"Unknown variable: {instruction}")
+            print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
         if inst[0] in ['jez', 'jlz', 'jgz'] and inst[1] not in vvm:
-            print(f"Unknown variable: {instruction}")
+            print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
         if inst[0] in ['jmp', 'jez', 'jlz', 'jgz'] and inst[-1][0] != ':':
-            print(f"Label must start with ':': {instruction}")
+            print(f"ASSEMBLER ERROR: Label must start with ':': {instruction}")
             return False
         if inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'dwt', 'out'] and inst[1] not in vvm and not (inst[1].isdigit() or inst[1].startswith('-') and inst[1][1:].isdigit()):
-            print(f"Invalid variable or immediate: {instruction}")
+            print(f"ASSEMBLER ERROR: Invalid variable or immediate: {instruction}")
             return False
 
         if inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'dwt', 'out'] and (inst[1].isdigit() or inst[1].startswith('-') and inst[1][1:].isdigit()):
@@ -80,15 +82,15 @@ def assemble(source):
         elif inst[0]=='jmp':
             program.extend(['Z', 'Z', inst[1]])
             n+=3
-        elif inst[0]=='jez':
-            program.extend([inst[1], 'Z', n+6, 'Z', 'Z', n+24, 'T1', inst[1], n+9, 'T1', 'Z', n+15, 'Z', 'Z', n+24, 'T1', 'T1', n+18, 'Z', 'Z', inst[2], 'T1', 'T1', n+24])
-            n+=24
+        elif inst[0]=='jle':
+            program.extend([inst[1], 'Z', inst[2]])
+            n+=3
         elif inst[0]=='jlz':
             program.extend(['T1', inst[1], n+3, 'T1', 'Z', n+12, 'T1', 'T1', n+9, 'Z', 'Z', inst[2], 'T1', 'T1', n+15])
             n+=15
-        elif inst[0]=='jgz':
-            program.extend([inst[1], 'Z', n+6, 'Z', 'Z', inst[2]])
-            n+=6
+        elif inst[0]=='jez':
+            program.extend([inst[1], 'Z', n+6, 'Z', 'Z', n+24, 'T1', inst[1], n+9, 'T1', 'Z', n+15, 'Z', 'Z', n+21, 'T1', 'T1', n+18, 'Z', 'Z', inst[2], 'T1', 'T1', n+24])
+            n+=24
         elif inst[0]=='mov':
             program.extend([inst[2], inst[2], n+3, 'Z', inst[1], n+6, inst[2], 'Z', n+9, 'Z', 'Z', n+12])
             n+=12
@@ -108,9 +110,10 @@ def assemble(source):
             program.extend(['Z', 'Z', -1])
             n+=3
         else:
-            print(f"Invalid operation: {instruction}")
+            print(f"ASSEMBLER ERROR: Invalid operation: {instruction}")
             return False
-        
+    if debug:
+        print(program, '\n', vvm, '\n', labels)
     for v in vvm:
         temp=n
         if isinstance(vvm[v], int):
@@ -130,11 +133,23 @@ def assemble(source):
                 try:
                     program[i]=labels[program[i][1:]]
                 except:
-                    print(f"Unknown label: {program[i][1:]}")
+                    print(f"ASSEMBLER ERROR: Unknown label: {program[i][1:]}")
                     return False
             elif program[i] in res_var:
                 program[i]=len(program)-(len(res_var)-res_var.index(program[i]))
             else:
                 program[i]=vvm[program[i]]
+    if debug:
+        print(program, '\n', vvm)
     return program
 
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: subleq.py <file.sla>")
+        sys.exit(1)
+    with open(sys.argv[1]) as f:
+        source = f.read()
+    program = assemble(source, debug='--debug' in sys.argv)
+    if program:
+        emulate(program, trace='--trace' in sys.argv)
