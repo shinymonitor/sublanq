@@ -8,7 +8,7 @@ It features a syntax similar to the B programming language and compiles down to 
 Subleq is an OISC (One Instruction Set Computer) architecture. 
 Despite its theoretical elegance, the development ecosystem is lacking. 
 The only existing high-level compiler, hsq, is currently abandonware. 
-Furthermore, it is highly inefficient; hsq generates over 5,500 instructions for a standard "Hello World" program (only 32 instructions needed). 
+Furthermore, it is highly inefficient; hsq generates over 5,500 instructions for a standard "Hello World" program with printf and over 1000 with manual putchar (only 32 instructions needed). 
 The Sublanq assembler demonstrates that this can be achieved in under 60 instructions.
 There is a clear need for a modern, optimizing compiler that respects the resources of the host machine.
 
@@ -50,9 +50,12 @@ The Sublanq assembler abstracts Subleq's single instruction into a comprehensive
 The table below details the syntax and the Subleq Cost (the number of raw Subleq instructions generated).
 
 Key:
-    addr: Memory Address (Variable)
-    imm: Immediate Value (Literal number)
-    *: Looped operation (Execution time scales with input size)
+
+addr: Memory Address (Variable)
+
+imm: Immediate Value (Literal number)
+
+*: Looped operation (Execution time scales with input size)
 
 #### Arithmetic & Logic
 | Instruction | Syntax | Cost | Description |
