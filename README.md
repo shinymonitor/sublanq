@@ -1,4 +1,4 @@
-# Sublanq
+# Sublanq (WIP)
 
 Sublanq is a high-level language compiler for the Subleq (Subtract and Branch if Less than or Equal to Zero) architecture. 
 It features a syntax similar to the B programming language and compiles down to highly optimized Subleq machine code.
