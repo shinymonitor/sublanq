@@ -1,0 +1,24 @@
+a 0
+b 55
+c 3
+temp 0
+__start__
+loop:
+    inp a
+    out a
+    mov a temp
+    sub b temp
+    jez temp :win
+    out 88
+    out 10
+    dec c
+    jle c :lose
+    jmp :loop
+lose:
+    out 76
+    out 10
+    hlt
+win:
+    out 87
+    out 10
+    hlt

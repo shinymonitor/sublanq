@@ -1,4 +1,4 @@
-from emulate import * 
+#!/usr/bin/python3
 
 def assemble(source, debug=False):
     program=[]
@@ -32,16 +32,16 @@ def assemble(source, debug=False):
             inst.pop(0)
             if inst==[]:
                 continue
-        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'jmp', 'inp', 'out'] and len(inst)!=2 or inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'drd', 'dwt', 'jez', 'jlz', 'jgz'] and len(inst)!=3 or inst[0]=='hlt' and len(inst)!=1:
+        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'jmp', 'inp', 'out'] and len(inst)!=2 or inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'drd', 'dwt', 'jez', 'jlz', 'jle'] and len(inst)!=3 or inst[0]=='hlt' and len(inst)!=1:
             print(f"ASSEMBLER ERROR: Incorrect number of arguments given: {instruction}")
             return False
         if inst[0] in ['zer', 'inc', 'dec', 'neg', 'add', 'sub', 'mul', 'div', 'mod', 'drd', 'dwt', 'inp'] and inst[-1] not in vvm:
             print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
-        if inst[0] in ['jez', 'jlz', 'jgz'] and inst[1] not in vvm:
+        if inst[0] in ['jez', 'jlz', 'jle'] and inst[1] not in vvm:
             print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
-        if inst[0] in ['jmp', 'jez', 'jlz', 'jgz'] and inst[-1][0] != ':':
+        if inst[0] in ['jmp', 'jez', 'jlz', 'jle'] and inst[-1][0] != ':':
             print(f"ASSEMBLER ERROR: Label must start with ':': {instruction}")
             return False
         if inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'dwt', 'out'] and inst[1] not in vvm and not (inst[1].isdigit() or inst[1].startswith('-') and inst[1][1:].isdigit()):
@@ -145,11 +145,16 @@ def assemble(source, debug=False):
 
 if __name__ == '__main__':
     import sys
-    if len(sys.argv) < 2:
-        print("Usage: subleq.py <file.sla>")
+    if len(sys.argv)<2 or sys.argv[1][-4:]!='.sla':
+        print("INCORRECT ARGUMENTS\nUsage: asm.py <file.sla>")
         sys.exit(1)
-    with open(sys.argv[1]) as f:
-        source = f.read()
+    try:
+        with open(sys.argv[1], 'r') as f:
+            source = f.read()
+    except:
+        print("Failed to open", sys.argv[1])
+        sys.exit(1)
     program = assemble(source, debug='--debug' in sys.argv)
     if program:
-        emulate(program, trace='--trace' in sys.argv)
+        with open(''.join(sys.argv[1].split('.')[:-1])+'.sq', 'w') as f:
+            f.write(' '.join(map(str, program)))

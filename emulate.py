@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import sys
 import tty
 import termios
@@ -33,7 +35,8 @@ def emulate(program, trace=False):
             i+=3
     except IndexError as e:
         print(f"RUNTIME ERROR at instruction {i}: Memory access out of bounds")
-        print(f"Attempted to access: program[{program[i]}] or program[{program[i+1]}]")
+        if i < len(program):
+            print(f"Instruction: [{program[i]}, {program[i+1] if i+1 < len(program) else '?'}, {program[i+2] if i+2 < len(program) else '?'}]")
         print(f"Program size: {len(program)}")
     except KeyboardInterrupt:
         print(f"RUNTIME ERROR Interrupted at instruction {i}")
@@ -42,3 +45,16 @@ def emulate(program, trace=False):
         print(f"Instruction: [{program[i]}, {program[i+1]}, {program[i+2]}]")
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv)<2 or sys.argv[1][-3:]!='.sq':
+        print("INCORRECT ARGUMENTS\nUsage: emulate.py <file.sq>")
+        sys.exit(1)
+    try:
+        with open(sys.argv[1], 'r') as f:
+            program = list(map(int, f.read().split()))
+    except:
+        print("Failed to open", sys.argv[1])
+        sys.exit(1)
+    emulate(program, trace='--trace' in sys.argv)

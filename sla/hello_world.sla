@@ -1,0 +1,9 @@
+msg 72 69 76 76 79 32 87 79 82 76 68 10 0
+i 0
+__start__
+loop: drd msg i
+    jle i :end
+    out i
+    inc msg
+    jmp :loop
+end: hlt
