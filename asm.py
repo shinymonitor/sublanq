@@ -17,12 +17,16 @@ def assemble(source, debug=False):
         if l.split()[0] in vvm:
             print(f"ASSEMBLER ERROR: Reassignment of varaible: {l}")
             return False
-        if len(l.split())>2:
-            vvm[l.split()[0]] = [int(x) for x in l.split()[1:]]
-        elif len(l.split())==2:
-            vvm[l.split()[0]] = int(l.split()[1])
-        else:
-            print(f"ASSEMBLER ERROR: Variable must have at least 1 assigned value: {l}")
+        try:
+            if len(l.split())>2:
+                vvm[l.split()[0]] = [int(x) for x in l.split()[1:]]
+            elif len(l.split())==2:
+                vvm[l.split()[0]] = int(l.split()[1])
+            else:
+                print(f"ASSEMBLER ERROR: Variable must have at least 1 assigned value: {l}")
+                return False
+        except:
+            print(f"ASSEMBLER ERROR: Invalid variable assignment: {l}")
             return False
     n = 0
     for instruction in instructions:
@@ -32,13 +36,13 @@ def assemble(source, debug=False):
             inst.pop(0)
             if inst==[]:
                 continue
-        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'jmp', 'inp', 'out'] and len(inst)!=2 or inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'drd', 'dwt', 'jez', 'jlz', 'jle'] and len(inst)!=3 or inst[0]=='hlt' and len(inst)!=1:
+        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'jmp'] and len(inst)!=2 or inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'drd', 'dwt', 'jez', 'jlz', 'jle', 'inp', 'out'] and len(inst)!=3 or inst[0]=='hlt' and len(inst)!=1:
             print(f"ASSEMBLER ERROR: Incorrect number of arguments given: {instruction}")
             return False
-        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'add', 'sub', 'mul', 'div', 'mod', 'drd', 'dwt', 'inp'] and inst[-1] not in vvm:
+        if inst[0] in ['zer', 'inc', 'dec', 'neg', 'add', 'sub', 'mul', 'div', 'mod', 'drd', 'dwt'] and inst[-1] not in vvm:
             print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
-        if inst[0] in ['jez', 'jlz', 'jle'] and inst[1] not in vvm:
+        if inst[0] in ['jez', 'jlz', 'jle', 'inp'] and inst[1] not in vvm:
             print(f"ASSEMBLER ERROR: Unknown variable: {instruction}")
             return False
         if inst[0] in ['jmp', 'jez', 'jlz', 'jle'] and inst[-1][0] != ':':
@@ -47,11 +51,16 @@ def assemble(source, debug=False):
         if inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'dwt', 'out'] and inst[1] not in vvm and not (inst[1].isdigit() or inst[1].startswith('-') and inst[1][1:].isdigit()):
             print(f"ASSEMBLER ERROR: Invalid variable or immediate: {instruction}")
             return False
+        if inst[0] in ['inp', 'out'] and not inst[2].isdigit():
+            print(f"ASSEMBLER ERROR: Invalid port (must be a non-negative immediate): {instruction}")
+            return False
 
         if inst[0] in ['add', 'sub', 'mul', 'div', 'mod', 'mov', 'dwt', 'out'] and (inst[1].isdigit() or inst[1].startswith('-') and inst[1][1:].isdigit()):
             vvm['C'+inst[1]]=int(inst[1])
             inst[1]='C'+inst[1]
-        
+        if inst[0] in ['inp', 'out']:
+            inst[2]=int(inst[2])
+
         if inst[0]=='zer':
             program.extend([inst[1], inst[1], n+3])
             n+=3
@@ -101,10 +110,10 @@ def assemble(source, debug=False):
             program.extend([n+24, n+24, n+3, n+25, n+25, n+6, n+30, n+30, n+9, 'Z', inst[2], n+12, n+24, 'Z', n+15, n+25, 'Z', n+18, n+30, 'Z', n+21, 'Z', 'Z', n+24, 0, 0, n+27, 'Z', inst[1], n+30, 0, 'Z', n+33, 'Z', 'Z', n+36])
             n+=36
         elif inst[0]=='inp':
-            program.extend([-1, inst[1], n+3])
+            program.extend([-1, inst[1], inst[2]])
             n+=3
         elif inst[0]=='out':
-            program.extend([inst[1], -1, n+3])
+            program.extend([inst[1], -1, inst[2]])
             n+=3
         elif inst[0]=='hlt':
             program.extend(['Z', 'Z', -1])

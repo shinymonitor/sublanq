@@ -3,7 +3,7 @@ i 0
 __start__
 loop: drd msg i
     jle i :end
-    out i
+    out i 0
     inc msg
     jmp :loop
 end: hlt

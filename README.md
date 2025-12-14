@@ -1,4 +1,7 @@
-# Sublanq (WIP)
+<div align="center">
+    <img src="assets/LOGO.png", width="200"/>
+    <h1>Sublanq (WIP)</h1>
+</div>
 
 Sublanq is a high-level language compiler for the Subleq (Subtract and Branch if Less than or Equal to Zero) architecture. 
 It features a syntax similar to the B programming language and compiles down to highly optimized Subleq machine code.
@@ -28,18 +31,30 @@ To maximize the performance of hardware we can:
 - Wide-Fetch Architecture: To minimize memory cycles, the hardware should fetch the entire instruction trio (A, B, C) in a single cycle.
 - SRAM Utilization: Using fast on-die SRAM reduces the power cost of memory operations, making the energy consumption comparable to register-based operations on standard CPUs.
 
+### I/O Architecture
+Sublanq utilizes a Port-Mapped I/O strategy rather than Memory-Mapped I/O or Interrupts. This design choice is critical for minimizing transistor count and maximizing versatility.
+- Mechanism: Standard Subleq instructions use the C operand as a jump target. When the A or B operand refers to the null address (-1), the CPU repurposes the C operand as a Port ID (Device Selector).
+- Why not Memory-Mapped I/O? Mapping hardware devices to RAM addresses complicates the memory controller (requiring dual-porting or clock division), "pollutes" the address space, and locks I/O to specific hardware configurations.
+- Why not Interrupts? Interrupts require complex state-saving logic and additional registers (stack pointers), which violates the OISC minimalism philosophy.
+- The Advantage: By using the C operand as a Port ID, the CPU can address devices with a single simple logic gate (detecting -1), allowing for complex setups (e.g. using multiple port by the same device for different interpretation of the data) without changing the core CPU design.
+
 ## The Project
 ### The Compiler (Sublanq)
 A high-level language compiler that targets the Subleq assembler.
 - Syntax: Modeled after B, offering a typeless, word-based programming environment that maps naturally to the Subleq memory model.
 - Efficiency: The primary goal of the compiler is to produce machine code that rivals hand-written assembly, drastically reducing the binary size compared to legacy tools.
 
+### Emulator
+A feature-full emulator with 128x128 palette screen and arrow keys input, tty output with full input support and a random number generator device. 
+
+Run `make` to build
+
 ### The Assembler
 A fully functional assembler designed to improve upon incomplete or unintuitive alternatives.
 Features:
 - Variables and Pointers: Native support for memory addressing and pointer logic.
 - Arithmetic: Abstraction of the subtract-based logic into standard mathematical operations.
-- I/O: Simplified input and output handling.
+- I/O: Simple multi-port input and output handling.
 - Control Flow: comprehensive support for labels and branching.
 - Integrated Emulator: Includes a terminal-based emulator to run and debug code immediately after assembly.
 
@@ -88,6 +103,26 @@ imm: Immediate Value (Literal number)
 #### I/O & System
 | Instruction | Syntax | Cost | Description |
 |-------------|--------|------|-------------|
-| inp | inp addr | 1 | Input to address |
-| out | out addr/imm | 1 | Output |
+| inp | inp addr imm_port | 1 | Input |
+| out | out addr/imm imm_port | 1 | Output |
 | hlt | hlt | 1 | Halt execution |
+
+## Screenshots
+
+#### Doom fire
+
+![FIRE_SS](assets/FIRE_SR.gif)
+
+![FIRE_SLA](assets/FIRE_SLA.png)
+
+#### Simple hello world program
+
+![HELLO_WORLD_SLA](assets/HELLO_WORLD_SLA.png)
+
+![HELLO_WORLD_SS](assets/HELLO_WORLD_SS.png)
+
+#### Simple number guess game
+
+![GUESS_SLA](assets/GUESS_SLA.png)
+
+![GUESS_SS](assets/GUESS_SS.png)

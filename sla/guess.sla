@@ -4,21 +4,21 @@ c 3
 temp 0
 __start__
 loop:
-    inp a
-    out a
+    inp a 0
+    out a 0
     mov a temp
     sub b temp
     jez temp :win
-    out 88
-    out 10
+    out 88 0
+    out 10 0
     dec c
     jle c :lose
     jmp :loop
 lose:
-    out 76
-    out 10
+    out 76 0
+    out 10 0
     hlt
 win:
-    out 87
-    out 10
+    out 87 0
+    out 10 0
     hlt
