@@ -65,12 +65,11 @@ static inline void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *pat
     FILE *f = fopen(path, "wb");
     if (!f) return;
     fprintf(f, "P6 %d %d 255\n", PICOFB_WIDTH, PICOFB_HEIGHT);
-    size_t count = 0;
     for (int y = 0; y < PICOFB_HEIGHT; y++){
         for (int x = 0; x < PICOFB_WIDTH; x++){
             uint32_t px = picofb_window->frame_buffer[y][x];
-            if (px) count++;
-            fwrite(&px, 1, 3, f);
+            unsigned char rgb[3] = { (px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF };
+            fwrite(rgb, 1, 3, f);
         }
     }
     fclose(f);
