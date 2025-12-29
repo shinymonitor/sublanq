@@ -8,7 +8,6 @@
 
 #define PICOFB_WIDTH 128
 #define PICOFB_HEIGHT 128
-//#define PICOFB_X11_BACKEND
 #include "picofb.h"
 
 #define PALETTE_R 255
@@ -72,10 +71,10 @@ void output(TYPE port, TYPE data){
             float t = (float)data/255;
             if(t < 0.5f) {
                 float s = t * 2.0f;
-                PICOFB_set_pixel(&fb_window, x, y, PICOFB_pixel_rgb((uint8_t)(PALETTE_R * s), (uint8_t)(PALETTE_G * s), (uint8_t)(PALETTE_B * s)));
+                PICOFB_set_pixel(&fb_window, x, y, PICOFB_color_rgb((uint8_t)(PALETTE_R * s), (uint8_t)(PALETTE_G * s), (uint8_t)(PALETTE_B * s)));
             } else {
                 float s = (t - 0.5f) * 2.0f;
-                PICOFB_set_pixel(&fb_window, x, y, PICOFB_pixel_rgb((uint8_t)(PALETTE_R + (255 - PALETTE_R) * s), (uint8_t)(PALETTE_G + (255 - PALETTE_G) * s), (uint8_t)(PALETTE_B + (255 - PALETTE_B) * s)));
+                PICOFB_set_pixel(&fb_window, x, y, PICOFB_color_rgb((uint8_t)(PALETTE_R + (255 - PALETTE_R) * s), (uint8_t)(PALETTE_G + (255 - PALETTE_G) * s), (uint8_t)(PALETTE_B + (255 - PALETTE_B) * s)));
             }
             x = (x + 1) % PICOFB_WIDTH;
             if (x == 0) y = (y + 1) % PICOFB_HEIGHT;
