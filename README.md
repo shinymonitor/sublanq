@@ -47,7 +47,7 @@ A high-level language compiler that targets the Subleq assembler.
 ### Emulator
 A feature-full emulator with 128x128 palette screen and arrow keys input, tty output with full input support and a random number generator device. 
 
-Run `make` to build
+Run `make <platform (linux, windows, other)>` to build
 
 ### The Assembler
 A fully functional assembler designed to improve upon incomplete or unintuitive alternatives.
