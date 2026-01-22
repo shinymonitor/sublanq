@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define TYPE int64_t
+#define TYPE int16_t
 
 #include "io.c"
 
@@ -12,10 +12,10 @@ int main(int argc, char **argv) {
     if (!f) {perror("fopen"); return 1;}
     TYPE size = 0;
     TYPE temp;
-    while (fscanf(f, "%zu", &temp) == 1) size++;
+    while (fscanf(f, "%hd", &temp) == 1) size++;
     rewind(f);
     TYPE *mem = malloc(size * sizeof(TYPE));
-    for (TYPE i = 0; i < size; i++) {if (!fscanf(f, "%zu", &mem[i])) return 1;}
+    for (TYPE i = 0; i < size; i++) {if (!fscanf(f, "%hd", &mem[i])) return 1;}
     fclose(f);
 
     init_io();

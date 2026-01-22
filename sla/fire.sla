@@ -43,10 +43,10 @@ main:
             mul SCREEN_WIDTH from
             add x from
 
-            //random=one of [0,1,2,3] (works correctly, verified)
+            //random=one of [0,1,2,3]
             inp random 2
             mul 4 random
-            div 2147483647 random
+            div 255 random
 
             //pixel=frame[from]
             mov frame temp

@@ -1,13 +1,13 @@
-#define TYPE int64_t
-
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
 
-#define PICOFB_WIDTH 128
-#define PICOFB_HEIGHT 128
+#define TYPE int16_t
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 128
 #include "picofb.h"
 
 #define PALETTE_R 255
@@ -17,6 +17,7 @@
 struct termios oldt;
 struct termios newt;
 
+uint32_t fb[SCREEN_WIDTH * SCREEN_HEIGHT]={0};
 size_t x=0;
 size_t y=0;
 PICOFB_Window fb_window={0};
@@ -27,7 +28,7 @@ void init_io() {
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-    PICOFB_init("SUBLANQ", &fb_window);
+    PICOFB_init("SUBLANQ", SCREEN_WIDTH, SCREEN_HEIGHT, (uint32_t*)fb, &fb_window);
 
     srand((unsigned int)time(NULL));
 }
@@ -53,8 +54,8 @@ TYPE input(TYPE port){
             if (fb_window.quit) return (TYPE)27; 
             return (TYPE)0;
         break;
-        case 2: 
-            return (TYPE)(uint32_t)rand();
+        case 2:
+            return (TYPE)(uint8_t)(rand());
         break;
         default : 
             return 0;
@@ -76,8 +77,8 @@ void output(TYPE port, TYPE data){
                 float s = (t - 0.5f) * 2.0f;
                 PICOFB_set_pixel(&fb_window, x, y, PICOFB_color_rgb((uint8_t)(PALETTE_R + (255 - PALETTE_R) * s), (uint8_t)(PALETTE_G + (255 - PALETTE_G) * s), (uint8_t)(PALETTE_B + (255 - PALETTE_B) * s)));
             }
-            x = (x + 1) % PICOFB_WIDTH;
-            if (x == 0) y = (y + 1) % PICOFB_HEIGHT;
+            x = (x + 1) % SCREEN_WIDTH;
+            if (x == 0) y = (y + 1) % SCREEN_HEIGHT;
         break;
         case 2: 
             PICOFB_update(&fb_window);
