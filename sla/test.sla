@@ -1,0 +1,289 @@
+; run with dbg io
+; this program is used as tests for assembler and emulator
+; Every expected output is a 0
+
+v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17, v18, v21
+msg * 49, 49, 49, 49, 49, 48, 48, 48, 48, 48, 48, 10, 0
+ptr, cnt, temp
+__start__
+; zer 00
+    mov 9 v00
+    zer v00
+    out v00 3
+    out 10 2
+; inc 01
+    mov -1 v01
+    inc v01
+    out v01 3
+    out 10 2
+; dec 02
+    mov 1 v02
+    dec v02
+    out v02 3
+    out 10 2
+; neg 03
+    mov 1 v03
+    neg v03
+    inc v03
+    out v03 3
+    out 44 2
+    mov -1 v03
+    neg v03
+    dec v03
+    out v03 3
+    out 44 2
+    zer v03
+    neg v03
+    out v03 3
+    out 10 2
+; add 04
+    mov 8 v04
+    add -4 v04
+    sub 4 v04
+    out v04 3
+    out 44 2
+    mov 8 v04
+    add 8 v04
+    sub 16 v04
+    out v04 3
+    out 10 2
+; sub 05
+    mov -4 v05
+    sub -4 v05
+    out v05 3
+    out 44 2
+    mov 8 v05
+    sub -8 v05
+    sub 16 v05
+    out v05 3
+    out 10 2
+; mul 06
+    mov 4 v06
+    mul 2 v06
+    sub 8 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    mul 2 v06
+    sub -8 v06
+    out v06 3
+    out 44 2
+    mov 4 v06
+    mul -2 v06
+    sub -8 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    mul -2 v06
+    sub 8 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    mul 0 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    mul 1 v06
+    sub -4 v06
+    out v06 3
+    out 44 2
+    out 10 2
+; div 07
+    mov 4 v06
+    div 2 v06
+    sub 2 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    div 2 v06
+    sub -2 v06
+    out v06 3
+    out 44 2
+    mov 4 v06
+    div -2 v06
+    sub -2 v06
+    out v06 3
+    out 44 2
+    mov -4 v06
+    div -2 v06
+    sub 2 v06
+    out v06 3
+    out 44 2
+    mov 0 v06
+    div 2 v06
+    out v06 3
+    out 44 2
+    mov -1 v06
+    div -2 v06
+    out v06 3
+    out 44 2
+    out 10 2
+; mod 08
+    mov 5 v06
+    mod 3 v06
+    sub 2 v06
+    out v06 3
+    out 44 2
+    mov -5 v06
+    mod 3 v06
+    sub -2 v06
+    out v06 3
+    out 44 2
+    mov 5 v06
+    mod -3 v06
+    sub 2 v06
+    out v06 3
+    out 44 2
+    mov -5 v06
+    mod -3 v06
+    sub -2 v06
+    out v06 3
+    out 44 2
+    out 10 2
+; jmp 09
+    jmp @l09
+    out 1 3
+    $l09 out 0 3
+    out 10 2
+; jle 10
+    jle v10 @l101
+    out 1 3
+    $l101 out 0 3
+    out 44 2
+    mov -10 v10
+    jle v10 @l102
+    out 1 3
+    $l102 out 0 3
+    out 44 2
+    mov 10 v10
+    jle v10 @l103
+    out 0 3
+    jmp @l104
+    $l103 out 1 3
+    $l104
+    out 10 2
+; jlz 11
+    mov -10 v11
+    jlz v11 @l111
+    out 1 3
+    $l111 out 0 3
+    out 44 2
+    mov 0 v11
+    jlz v11 @l113
+    out 0 3
+    jmp @l114
+    $l113 out 1 3
+    $l114 
+    out 44 2
+    mov 10 v11
+    jlz v11 @l115
+    out 0 3
+    jmp @l116
+    $l115 out 1 3
+    $l116 
+    out 10 2
+; jez 12
+    mov 0 v12
+    jez v12 @l121
+    out 1 3
+    $l121 out 0 3
+    out 44 2
+    mov -10 v12
+    jez v12 @l122
+    out 0 3
+    jmp @l123
+    $l122 out 1 3
+    $l123 
+    out 44 2
+    mov 10 v12
+    jez v12 @l125
+    out 0 3
+    jmp @l126
+    $l125 out 1 3
+    $l126 
+    out 10 2
+; jge 13
+    mov 10 v13
+    jge v13 @l131
+    out 1 3
+    $l131 out 0 3
+    out 44 2
+    mov 0 v13
+    jge v13 @l132
+    out 1 3
+    $l132 out 0 3
+    out 44 2
+    mov -10 v13
+    jge v13 @l135
+    out 0 3
+    jmp @l136
+    $l135 out 1 3
+    $l136 
+    out 10 2
+; jgz 14
+    mov 10 v14
+    jgz v14 @l141
+    out 1 3
+    $l141 out 0 3
+    out 44 2
+    mov -10 v14
+    jgz v14 @l142
+    out 0 3
+    jmp @l143
+    $l142 out 1 3
+    $l143 
+    out 44 2
+    mov 0 v14
+    jgz v14 @l145
+    out 0 3
+    jmp @l146
+    $l145 out 1 3
+    $l146 
+    out 10 2
+; sjp 15
+    sjp @l16 v15
+    out 0 3
+    out 10 2
+; ljp 16
+    ljp v15
+    out 1 3
+    $l16
+    out 0 3
+    out 10 2
+; mov 17
+    mov 0 v17
+    out v17 3
+    out 10 2
+; adr 18
+    adr v18 temp
+    sub 28 temp
+    out temp 3
+    out 10 2
+; dwt & drd
+    mov msg ptr
+    $write_loop 
+    dwt 48 ptr
+    inc ptr
+    inc cnt
+    mov cnt temp
+    sub 5 temp
+    jge temp @read_loop
+    jmp @write_loop
+    $read_loop 
+    drd msg temp
+    jle temp @end
+    out temp 2
+    inc msg
+    jmp @read_loop
+    $end 
+; inp 21
+    inp 1 v21
+    out v21 3
+    out 10 2
+; out 22
+    out 48 2
+    out 10 2
+; hlt 23
+    out 10 2
+    hlt
+    out 1 3

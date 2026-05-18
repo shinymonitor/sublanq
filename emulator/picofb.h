@@ -4,24 +4,19 @@
 // Guidelines
 // - Allocate a zero initialized PICOFB_Window to store state and pass to API
 // - use PICOFB_Window.quit to loop
-// - See PICOFB_Key for the keyboard input enum
-// - Define PICOFB_BACKEND_OVERRIDE and then PICOFB_<X11/WIN32/WAYLAND/SDL>_BACKEND to override backend select
+// - See PICOFB_Key for the keyboard input, PICOFB_Mouse for mouse input
+// - Define PICOFB_BACKEND_OVERRIDE and then PICOFB_<X11/WAYLAND/WIN32/SDL>_BACKEND to override backend select
 //
 // API:
-// - bool PICOFB_init(const char* window_title, size_t width, size_t height, uint32_t* frame_buffer, PICOFB_Window* picofb_window) - initialize and present a window with a window title string
-// - void PICOFB_set_pixel(PICOFB_Window* picofb_window, size_t x, size_t y, uint32_t color)                                       - set the frame buffer pixel at x, y to a color
-// - uint32_t PICOFB_color_rgb(uint8_t r, uint8_t g, uint8_t b)                                                                    - returns a cross-platform color value to be used in set pixel function
-// - void PICOFB_update(PICOFB_Window* picofb_window)                                                                              - updates the window to display the frame buffer and gets user input
-// - bool PICOFB_is_input(PICOFB_Window* picofb_window, PICOFB_Key key)                                                            - check if the key was pressed last frame
-// - void PICOFB_cleanup(PICOFB_Window* picofb_window)                                                                             - cleanup the window
-// - void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *path)                                                          - save the frame buffer to a ppm file
-// 
+// - bool PICOFB_init(const char* window_title, uint16_t width, uint16_t height, PICOFB_Window* picofb_window) - initialize and present a window with a window title string
+// - void PICOFB_update(PICOFB_Window* picofb_window)                                                          - updates the window to display the frame buffer and gets user input
+// - void PICOFB_cleanup(PICOFB_Window* picofb_window)                                                         - cleanup the window
+//
 // User visible fields of PICOFB_Window (cross-platform):
-//     size_t width;
-//     size_t height;
-//     uint32_t* frame_buffer;
-//     bool key_states[PICOFB_Key_COUNT];
-//     bool quit;
+//    uint32_t* frame_buffer;
+//    uint16_t width, height;
+//    bool keyboard[PICOFB_Key_COUNT]; PICOFB_Mouse mouse;
+//    bool quit;
 //
 
 //================================================================
@@ -37,6 +32,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -65,26 +61,28 @@ typedef enum {
     // Arrow keys
     PICOFB_Key_UP, PICOFB_Key_DOWN, PICOFB_Key_LEFT, PICOFB_Key_RIGHT,
     // Control keys
-    PICOFB_Key_ESC, PICOFB_Key_SPACE, PICOFB_Key_ENTER, PICOFB_Key_TAB,
-    PICOFB_Key_BACKSPACE, PICOFB_Key_DELETE, PICOFB_Key_INSERT,
-    PICOFB_Key_HOME, PICOFB_Key_END, PICOFB_Key_PAGEUP, PICOFB_Key_PAGEDOWN,
+    PICOFB_Key_ESC, PICOFB_Key_SPACE, 
+    PICOFB_Key_ENTER, PICOFB_Key_TAB, PICOFB_Key_BACKSPACE, PICOFB_Key_DELETE, 
+    PICOFB_Key_INSERT, PICOFB_Key_HOME, PICOFB_Key_END, PICOFB_Key_PAGEUP, PICOFB_Key_PAGEDOWN,
     // Modifiers
-    PICOFB_Key_LSHIFT, PICOFB_Key_RSHIFT, PICOFB_Key_LCTRL, PICOFB_Key_RCTRL,
-    PICOFB_Key_LALT, PICOFB_Key_RALT, PICOFB_Key_LSUPER, PICOFB_Key_RSUPER,
+    PICOFB_Key_LSHIFT, PICOFB_Key_RSHIFT, 
+    PICOFB_Key_LCTRL, PICOFB_Key_RCTRL,
+    PICOFB_Key_LALT, PICOFB_Key_RALT, 
+    PICOFB_Key_LSUPER, PICOFB_Key_RSUPER,
     // Punctuation/Symbols
-    PICOFB_Key_MINUS, PICOFB_Key_EQUALS, PICOFB_Key_LBRACKET, PICOFB_Key_RBRACKET,
-    PICOFB_Key_BACKSLASH, PICOFB_Key_SEMICOLON, PICOFB_Key_APOSTROPHE,
+    PICOFB_Key_MINUS, PICOFB_Key_EQUALS, 
+    PICOFB_Key_LBRACKET, PICOFB_Key_RBRACKET, PICOFB_Key_BACKSLASH, 
+    PICOFB_Key_SEMICOLON, PICOFB_Key_APOSTROPHE,
     PICOFB_Key_COMMA, PICOFB_Key_PERIOD, PICOFB_Key_SLASH, PICOFB_Key_GRAVE,
-    // Numpad
-    PICOFB_Key_KP_0, PICOFB_Key_KP_1, PICOFB_Key_KP_2, PICOFB_Key_KP_3,
-    PICOFB_Key_KP_4, PICOFB_Key_KP_5, PICOFB_Key_KP_6, PICOFB_Key_KP_7,
-    PICOFB_Key_KP_8, PICOFB_Key_KP_9,
-    PICOFB_Key_KP_MULTIPLY, PICOFB_Key_KP_PLUS, PICOFB_Key_KP_MINUS,
-    PICOFB_Key_KP_DIVIDE, PICOFB_Key_KP_ENTER, PICOFB_Key_KP_PERIOD,
     // Lock keys
-    PICOFB_Key_CAPSLOCK, PICOFB_Key_NUMLOCK, PICOFB_Key_SCROLLLOCK,
+    PICOFB_Key_CAPSLOCK,
     PICOFB_Key_COUNT
 } PICOFB_Key;
+
+typedef struct {
+    uint16_t x, y; 
+    bool left, middle, right; int8_t scroll_delta;
+} PICOFB_Mouse;
 
 //================================================================
 // BACKEND SELECT
@@ -92,21 +90,22 @@ typedef enum {
 
 #ifndef PICOFB_BACKEND_OVERRIDE
 
-#ifdef _WIN32
-#define PICOFB_WIN32_BACKEND
-#else
-
 #ifdef __linux__
-#ifdef PICOFB_WAYLAND
-#define PICOFB_WAYLAND_BACKEND
+    #ifdef PICOFB_WAYLAND
+        #define PICOFB_WAYLAND_BACKEND
+    #else
+        #define PICOFB_X11_BACKEND
+    #endif
 #else
-#define PICOFB_X11_BACKEND
-#endif
-
-#else
-#define PICOFB_SDL_BACKEND
-#endif
-
+    #ifdef _WIN32
+        #define PICOFB_WIN32_BACKEND
+    #else
+        #ifdef __APPLE__
+            #define PICOFB_SDL_BACKEND
+        #else
+            #define PICOFB_SDL_BACKEND
+        #endif
+    #endif
 #endif
 
 #endif // !(PICOFB_BACKEND_OVERRIDE)
@@ -121,12 +120,6 @@ typedef enum {
 #include <X11/Xutil.h>
 
 typedef struct {
-    size_t width;
-    size_t height;
-    uint32_t* frame_buffer;
-    bool key_states[PICOFB_Key_COUNT];
-    bool quit;
-
     Display* display;
     Window window;
     XWindowAttributes wa;
@@ -134,6 +127,14 @@ typedef struct {
     GC gc;
     Atom wm_delete_window;
     XEvent event;
+} PICOFB_DontTouch;
+
+typedef struct {
+    uint32_t* frame_buffer;
+    uint16_t width, height;
+    bool keyboard[PICOFB_Key_COUNT]; PICOFB_Mouse mouse;
+    bool quit;
+    PICOFB_DontTouch dont_touch;
 } PICOFB_Window;
 
 static inline PICOFB_Key PICOFB_from_x11_keysym(KeySym key){
@@ -227,149 +228,410 @@ static inline PICOFB_Key PICOFB_from_x11_keysym(KeySym key){
         case XK_period: return PICOFB_Key_PERIOD;
         case XK_slash: return PICOFB_Key_SLASH;
         case XK_grave: return PICOFB_Key_GRAVE;
-        // Numpad
-        case XK_KP_0: return PICOFB_Key_KP_0;
-        case XK_KP_1: return PICOFB_Key_KP_1;
-        case XK_KP_2: return PICOFB_Key_KP_2;
-        case XK_KP_3: return PICOFB_Key_KP_3;
-        case XK_KP_4: return PICOFB_Key_KP_4;
-        case XK_KP_5: return PICOFB_Key_KP_5;
-        case XK_KP_6: return PICOFB_Key_KP_6;
-        case XK_KP_7: return PICOFB_Key_KP_7;
-        case XK_KP_8: return PICOFB_Key_KP_8;
-        case XK_KP_9: return PICOFB_Key_KP_9;
-        case XK_KP_Multiply: return PICOFB_Key_KP_MULTIPLY;
-        case XK_KP_Add: return PICOFB_Key_KP_PLUS;
-        case XK_KP_Subtract: return PICOFB_Key_KP_MINUS;
-        case XK_KP_Divide: return PICOFB_Key_KP_DIVIDE;
-        case XK_KP_Enter: return PICOFB_Key_KP_ENTER;
-        case XK_KP_Decimal: return PICOFB_Key_KP_PERIOD;
         // Lock keys
         case XK_Caps_Lock: return PICOFB_Key_CAPSLOCK;
-        case XK_Num_Lock: return PICOFB_Key_NUMLOCK;
-        case XK_Scroll_Lock: return PICOFB_Key_SCROLLLOCK;
         
         default: return PICOFB_Key_UNKNOWN;
     }
 }
-
 static int PICOFB_destroy_image(XImage *img) {(void)img; return 0;}
-static inline bool PICOFB_init(const char* window_title, size_t width, size_t height, uint32_t* frame_buffer, PICOFB_Window* picofb_window) {
-    if (!picofb_window || !frame_buffer) return false;
+static inline bool PICOFB_init(const char* window_title, uint16_t width, uint16_t height, PICOFB_Window* picofb_window) {
+    if (!picofb_window) return false;
+    picofb_window->frame_buffer=calloc(width * height, sizeof(uint32_t));
+    if (!picofb_window->frame_buffer) return false;
     picofb_window->width=width; picofb_window->height=height; 
-    picofb_window->frame_buffer=frame_buffer;
-    picofb_window->display = XOpenDisplay(NULL);
-    if (picofb_window->display == NULL) return false;
-    picofb_window->window = XCreateSimpleWindow(picofb_window->display, XDefaultRootWindow(picofb_window->display), 0, 0, width, height, 0, 0, 0);
-    if (!XGetWindowAttributes(picofb_window->display, picofb_window->window, &picofb_window->wa)) {
-        XDestroyWindow(picofb_window->display, picofb_window->window);
-        XCloseDisplay(picofb_window->display);
+    picofb_window->dont_touch.display = XOpenDisplay(NULL);
+    if (picofb_window->dont_touch.display == NULL) return false;
+    picofb_window->dont_touch.window = XCreateSimpleWindow(picofb_window->dont_touch.display, XDefaultRootWindow(picofb_window->dont_touch.display), 0, 0, width, height, 0, 0, 0);
+    if (!XGetWindowAttributes(picofb_window->dont_touch.display, picofb_window->dont_touch.window, &picofb_window->dont_touch.wa)) {
+        XDestroyWindow(picofb_window->dont_touch.display, picofb_window->dont_touch.window);
+        XCloseDisplay(picofb_window->dont_touch.display);
         return false;
     }
     picofb_window->quit = false;
-    picofb_window->image = XCreateImage(picofb_window->display, picofb_window->wa.visual, picofb_window->wa.depth, ZPixmap, 0, (char*) picofb_window->frame_buffer, width, height, 32, width * sizeof(uint32_t));
-    if (!picofb_window->image) {
-        XDestroyWindow(picofb_window->display, picofb_window->window);
-        XCloseDisplay(picofb_window->display);
+    picofb_window->dont_touch.image = XCreateImage(picofb_window->dont_touch.display, picofb_window->dont_touch.wa.visual, picofb_window->dont_touch.wa.depth, ZPixmap, 0, (char*) picofb_window->frame_buffer, width, height, 32, width * sizeof(uint32_t));
+    if (!picofb_window->dont_touch.image) {
+        XDestroyWindow(picofb_window->dont_touch.display, picofb_window->dont_touch.window);
+        XCloseDisplay(picofb_window->dont_touch.display);
         return false;
     }
-    picofb_window->image->f.destroy_image = PICOFB_destroy_image;
-    picofb_window->gc = XCreateGC(picofb_window->display, picofb_window->window, 0, NULL);
-    if (!picofb_window->gc) {
-        XDestroyImage(picofb_window->image);
-        XDestroyWindow(picofb_window->display, picofb_window->window);
-        XCloseDisplay(picofb_window->display);
+    picofb_window->dont_touch.image->f.destroy_image = PICOFB_destroy_image;
+    picofb_window->dont_touch.gc = XCreateGC(picofb_window->dont_touch.display, picofb_window->dont_touch.window, 0, NULL);
+    if (!picofb_window->dont_touch.gc) {
+        XDestroyImage(picofb_window->dont_touch.image);
+        XDestroyWindow(picofb_window->dont_touch.display, picofb_window->dont_touch.window);
+        XCloseDisplay(picofb_window->dont_touch.display);
         return false;
     }
-    picofb_window->wm_delete_window = XInternAtom(picofb_window->display, "WM_DELETE_WINDOW", False);
-    XSetWMProtocols(picofb_window->display, picofb_window->window, &picofb_window->wm_delete_window, 1);
-    XSelectInput(picofb_window->display, picofb_window->window, KeyPressMask | KeyReleaseMask | ExposureMask | StructureNotifyMask);
-    XStoreName(picofb_window->display, picofb_window->window, window_title ? window_title : "PICOFB");
-    XMapWindow(picofb_window->display, picofb_window->window);
+    picofb_window->dont_touch.wm_delete_window = XInternAtom(picofb_window->dont_touch.display, "WM_DELETE_WINDOW", False);
+    XSetWMProtocols(picofb_window->dont_touch.display, picofb_window->dont_touch.window, &picofb_window->dont_touch.wm_delete_window, 1);
+    XSelectInput(picofb_window->dont_touch.display, picofb_window->dont_touch.window, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
+    XStoreName(picofb_window->dont_touch.display, picofb_window->dont_touch.window, window_title ? window_title : "PICOFB");
+    XMapWindow(picofb_window->dont_touch.display, picofb_window->dont_touch.window);
     XSizeHints hints = {0};
     hints.flags = PMinSize | PMaxSize;
     hints.min_width = hints.max_width = width;
     hints.min_height = hints.max_height = height;
-    XSetWMNormalHints(picofb_window->display, picofb_window->window, &hints);
-    XFlush(picofb_window->display);
+    XSetWMNormalHints(picofb_window->dont_touch.display, picofb_window->dont_touch.window, &hints);
     return true;
 }
-
-static inline uint32_t PICOFB_color_rgb(uint8_t r, uint8_t g, uint8_t b) {return (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;}
-static inline void PICOFB_set_pixel(PICOFB_Window* picofb_window, size_t x, size_t y, uint32_t color){picofb_window->frame_buffer[y*picofb_window->width+x] = color;}
-
 static inline void PICOFB_update(PICOFB_Window* picofb_window) {
-    while (XPending(picofb_window->display) > 0) {
-        XNextEvent(picofb_window->display, &picofb_window->event);
-        switch(picofb_window->event.type) {
+    picofb_window->mouse.scroll_delta = 0;
+    while (XPending(picofb_window->dont_touch.display) > 0) {
+        XNextEvent(picofb_window->dont_touch.display, &picofb_window->dont_touch.event);
+        switch(picofb_window->dont_touch.event.type) {
             case KeyPress: {
-                PICOFB_Key key = PICOFB_from_x11_keysym(XLookupKeysym(&picofb_window->event.xkey, 0));
-                if (key != PICOFB_Key_UNKNOWN) picofb_window->key_states[key] = true;
+                PICOFB_Key key = PICOFB_from_x11_keysym(XLookupKeysym(&picofb_window->dont_touch.event.xkey, 0));
+                if (key != PICOFB_Key_UNKNOWN) picofb_window->keyboard[key] = true;
                 break;
             }
             case KeyRelease: {
-                PICOFB_Key key = PICOFB_from_x11_keysym(XLookupKeysym(&picofb_window->event.xkey, 0));
-                if (key != PICOFB_Key_UNKNOWN) picofb_window->key_states[key] = false;
+                PICOFB_Key key = PICOFB_from_x11_keysym(XLookupKeysym(&picofb_window->dont_touch.event.xkey, 0));
+                if (key != PICOFB_Key_UNKNOWN) picofb_window->keyboard[key] = false;
                 break;
             }
+            case ButtonPress:
+                if (picofb_window->dont_touch.event.xbutton.button == Button1) picofb_window->mouse.left = true;
+                if (picofb_window->dont_touch.event.xbutton.button == Button3) picofb_window->mouse.right = true;
+                if (picofb_window->dont_touch.event.xbutton.button == Button2) picofb_window->mouse.middle = true;
+                if (picofb_window->dont_touch.event.xbutton.button == Button4) picofb_window->mouse.scroll_delta = 1;
+                if (picofb_window->dont_touch.event.xbutton.button == Button5) picofb_window->mouse.scroll_delta = -1;
+                break;
+            case ButtonRelease:
+                if (picofb_window->dont_touch.event.xbutton.button == Button1) picofb_window->mouse.left = false;
+                if (picofb_window->dont_touch.event.xbutton.button == Button3) picofb_window->mouse.right = false;
+                if (picofb_window->dont_touch.event.xbutton.button == Button2) picofb_window->mouse.middle = false;
+                break;
+            case MotionNotify:
+                picofb_window->mouse.x = picofb_window->dont_touch.event.xmotion.x;
+                picofb_window->mouse.y = picofb_window->dont_touch.event.xmotion.y;
+                break;
             case ClientMessage:
-                if ((Atom) picofb_window->event.xclient.data.l[0] == picofb_window->wm_delete_window) picofb_window->quit = true;
+                if ((Atom) picofb_window->dont_touch.event.xclient.data.l[0] == picofb_window->dont_touch.wm_delete_window) picofb_window->quit = true;
             break;
         }
     }
-    XPutImage(picofb_window->display, picofb_window->window, picofb_window->gc, picofb_window->image, 0, 0, 0, 0, picofb_window->width, picofb_window->height);
-    XFlush(picofb_window->display);
+    XPutImage(picofb_window->dont_touch.display, picofb_window->dont_touch.window, picofb_window->dont_touch.gc, picofb_window->dont_touch.image, 0, 0, 0, 0, picofb_window->width, picofb_window->height);
+    XFlush(picofb_window->dont_touch.display);
 }
-
-static inline bool PICOFB_is_input(PICOFB_Window* picofb_window, PICOFB_Key key) {
-    if (key < 0 || key >= PICOFB_Key_COUNT) return false;
-    return picofb_window->key_states[key];
-}
-
 static inline void PICOFB_cleanup(PICOFB_Window* picofb_window) {
-    if (picofb_window->image) XDestroyImage(picofb_window->image);
-    if (picofb_window->gc) XFreeGC(picofb_window->display, picofb_window->gc);
-    if (picofb_window->window) XDestroyWindow(picofb_window->display, picofb_window->window);
-    if (picofb_window->display) XCloseDisplay(picofb_window->display);
-}
-
-static inline void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *path){
-    FILE *f = fopen(path, "wb");
-    if (!f) return;
-    fprintf(f, "P6 %zu %zu 255\n", picofb_window->width, picofb_window->height);
-    for (size_t y = 0; y < picofb_window->height; ++y){
-        for (size_t x = 0; x < picofb_window->width; ++x){
-            uint32_t px = picofb_window->frame_buffer[y*picofb_window->width+x];
-            unsigned char rgb[3] = { (px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF };
-            fwrite(rgb, 1, 3, f);
-        }
-    }
-    fclose(f);
+    if (picofb_window->dont_touch.image) XDestroyImage(picofb_window->dont_touch.image);
+    if (picofb_window->dont_touch.gc) XFreeGC(picofb_window->dont_touch.display, picofb_window->dont_touch.gc);
+    if (picofb_window->dont_touch.window) XDestroyWindow(picofb_window->dont_touch.display, picofb_window->dont_touch.window);
+    if (picofb_window->dont_touch.display) XCloseDisplay(picofb_window->dont_touch.display);
+    if (picofb_window->frame_buffer) free(picofb_window->frame_buffer);
 }
 
 #endif // PICOFB_X11_BACKEND
+
+#ifdef PICOFB_WAYLAND_BACKEND
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include <string.h>
+#include <poll.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <linux/input-event-codes.h>
+#include <wayland-client.h>
+#include "xdg-shell-client-protocol.h"
+
+#ifndef PICOFB_NEW_MEMFD
+    #include <linux/memfd.h>
+    #include <sys/syscall.h>
+    int memfd_create(const char *name, unsigned int flags) {
+        return syscall(SYS_memfd_create, name, flags);
+    }
+#endif
+
+typedef struct {
+    struct wl_display* display;
+    struct wl_registry* registry;
+    struct wl_compositor* compositor;
+    struct wl_shm* shm;
+    struct wl_surface* surface;
+    struct xdg_wm_base* xdg_wm_base;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+    struct wl_seat* seat;
+    struct wl_keyboard* kb;
+    struct wl_pointer* pointer;
+    struct wl_buffer* buffer;
+    int shm_fd;
+    bool configured;
+} PICOFB_DontTouch;
+
+typedef struct {
+    uint32_t* frame_buffer;
+    uint16_t width, height;
+    bool keyboard[PICOFB_Key_COUNT]; PICOFB_Mouse mouse;
+    bool quit;
+    PICOFB_DontTouch dont_touch;
+} PICOFB_Window;
+
+static inline void PICOFB_cleanup(PICOFB_Window* picofb_window);
+
+static inline PICOFB_Key PICOFB_from_wayland_keycode(uint32_t keycode) {
+    switch(keycode) {
+        case KEY_A: return PICOFB_Key_a; 
+        case KEY_B: return PICOFB_Key_b; 
+        case KEY_C: return PICOFB_Key_c; 
+        case KEY_D: return PICOFB_Key_d;
+        case KEY_E: return PICOFB_Key_e; 
+        case KEY_F: return PICOFB_Key_f; 
+        case KEY_G: return PICOFB_Key_g; 
+        case KEY_H: return PICOFB_Key_h;
+        case KEY_I: return PICOFB_Key_i; 
+        case KEY_J: return PICOFB_Key_j; 
+        case KEY_K: return PICOFB_Key_k; 
+        case KEY_L: return PICOFB_Key_l;
+        case KEY_M: return PICOFB_Key_m; 
+        case KEY_N: return PICOFB_Key_n;
+        case KEY_O: return PICOFB_Key_o; 
+        case KEY_P: return PICOFB_Key_p;
+        case KEY_Q: return PICOFB_Key_q; 
+        case KEY_R: return PICOFB_Key_r;
+        case KEY_S: return PICOFB_Key_s; 
+        case KEY_T: return PICOFB_Key_t;
+        case KEY_U: return PICOFB_Key_u; 
+        case KEY_V: return PICOFB_Key_v;
+        case KEY_W: return PICOFB_Key_w; 
+        case KEY_X: return PICOFB_Key_x;
+        case KEY_Y: return PICOFB_Key_y; 
+        case KEY_Z: return PICOFB_Key_z;
+        case KEY_0: return PICOFB_Key_0; 
+        case KEY_1: return PICOFB_Key_1;
+        case KEY_2: return PICOFB_Key_2; 
+        case KEY_3: return PICOFB_Key_3;
+        case KEY_4: return PICOFB_Key_4; 
+        case KEY_5: return PICOFB_Key_5;
+        case KEY_6: return PICOFB_Key_6; 
+        case KEY_7: return PICOFB_Key_7;
+        case KEY_8: return PICOFB_Key_8; 
+        case KEY_9: return PICOFB_Key_9;
+        case KEY_F1: return PICOFB_Key_F1; 
+        case KEY_F2: return PICOFB_Key_F2; 
+        case KEY_F3: return PICOFB_Key_F3; 
+        case KEY_F4: return PICOFB_Key_F4;
+        case KEY_F5: return PICOFB_Key_F5; 
+        case KEY_F6: return PICOFB_Key_F6; 
+        case KEY_F7: return PICOFB_Key_F7; 
+        case KEY_F8: return PICOFB_Key_F8;
+        case KEY_F9: return PICOFB_Key_F9; 
+        case KEY_F10: return PICOFB_Key_F10; 
+        case KEY_F11: return PICOFB_Key_F11; 
+        case KEY_F12: return PICOFB_Key_F12;
+        case KEY_UP: return PICOFB_Key_UP; 
+        case KEY_DOWN: return PICOFB_Key_DOWN; 
+        case KEY_LEFT: return PICOFB_Key_LEFT; 
+        case KEY_RIGHT: return PICOFB_Key_RIGHT;
+        case KEY_ESC: return PICOFB_Key_ESC; 
+        case KEY_SPACE: return PICOFB_Key_SPACE; 
+        case KEY_ENTER: return PICOFB_Key_ENTER; 
+        case KEY_TAB: return PICOFB_Key_TAB;
+        case KEY_BACKSPACE: return PICOFB_Key_BACKSPACE; 
+        case KEY_DELETE: return PICOFB_Key_DELETE; 
+        case KEY_INSERT: return PICOFB_Key_INSERT;
+        case KEY_HOME: return PICOFB_Key_HOME; 
+        case KEY_END: return PICOFB_Key_END; 
+        case KEY_PAGEUP: return PICOFB_Key_PAGEUP; 
+        case KEY_PAGEDOWN: return PICOFB_Key_PAGEDOWN;
+        case KEY_LEFTSHIFT: return PICOFB_Key_LSHIFT; 
+        case KEY_RIGHTSHIFT: return PICOFB_Key_RSHIFT;
+        case KEY_LEFTCTRL: return PICOFB_Key_LCTRL; 
+        case KEY_RIGHTCTRL: return PICOFB_Key_RCTRL;
+        case KEY_LEFTALT: return PICOFB_Key_LALT; 
+        case KEY_RIGHTALT: return PICOFB_Key_RALT;
+        case KEY_LEFTMETA: return PICOFB_Key_LSUPER; 
+        case KEY_RIGHTMETA: return PICOFB_Key_RSUPER;
+        case KEY_MINUS: return PICOFB_Key_MINUS; 
+        case KEY_EQUAL: return PICOFB_Key_EQUALS;
+        case KEY_LEFTBRACE: return PICOFB_Key_LBRACKET; 
+        case KEY_RIGHTBRACE: return PICOFB_Key_RBRACKET;
+        case KEY_BACKSLASH: return PICOFB_Key_BACKSLASH; 
+        case KEY_SEMICOLON: return PICOFB_Key_SEMICOLON;
+        case KEY_APOSTROPHE: return PICOFB_Key_APOSTROPHE; 
+        case KEY_COMMA: return PICOFB_Key_COMMA;
+        case KEY_DOT: return PICOFB_Key_PERIOD; 
+        case KEY_SLASH: return PICOFB_Key_SLASH; 
+        case KEY_GRAVE: return PICOFB_Key_GRAVE; 
+        case KEY_CAPSLOCK: return PICOFB_Key_CAPSLOCK;
+        default: return PICOFB_Key_UNKNOWN;
+    }
+}
+
+static void kb_key(void* data, struct wl_keyboard* kb, uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
+    (void)kb; (void)serial; (void)time;
+    PICOFB_Window* w = data;
+    PICOFB_Key k = PICOFB_from_wayland_keycode(key);
+    if (k != PICOFB_Key_UNKNOWN) w->keyboard[k] = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+}
+static void kb_keymap(void* d, struct wl_keyboard* k, uint32_t f, int32_t fd, uint32_t s) {(void)d;(void)k;(void)f;(void)s; close(fd);}
+static void kb_enter(void* d, struct wl_keyboard* k, uint32_t s, struct wl_surface* su, struct wl_array* ke) {(void)d;(void)k;(void)s;(void)su;(void)ke;}
+static void kb_leave(void* d, struct wl_keyboard* k, uint32_t s, struct wl_surface* su) {(void)d;(void)k;(void)s;(void)su;}
+static void kb_mods(void* d, struct wl_keyboard* k, uint32_t s, uint32_t md, uint32_t ml, uint32_t mo, uint32_t g) {(void)d;(void)k;(void)s;(void)md;(void)ml;(void)mo;(void)g;}
+static void kb_repeat(void* d, struct wl_keyboard* k, int32_t r, int32_t de) {(void)d;(void)k;(void)r;(void)de;}
+static const struct wl_keyboard_listener kb_listener = {kb_keymap, kb_enter, kb_leave, kb_key, kb_mods, kb_repeat};
+static void ptr_enter(void* d, struct wl_pointer* p, uint32_t s, struct wl_surface* su, wl_fixed_t x, wl_fixed_t y) {(void)d;(void)p;(void)s;(void)su;(void)x;(void)y;}
+static void ptr_leave(void* d, struct wl_pointer* p, uint32_t s, struct wl_surface* su) {(void)d;(void)p;(void)s;(void)su;}
+static void ptr_motion(void* data, struct wl_pointer* p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
+    (void)p; (void)time;
+    PICOFB_Window* w = data;
+    w->mouse.x = wl_fixed_to_int(x);
+    w->mouse.y = wl_fixed_to_int(y);
+}
+static void ptr_button(void* data, struct wl_pointer* p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
+    (void)p; (void)serial; (void)time;
+    PICOFB_Window* w = data;
+    bool pressed = (state == WL_POINTER_BUTTON_STATE_PRESSED);
+    if (button == BTN_LEFT) w->mouse.left = pressed;
+    else if (button == BTN_RIGHT) w->mouse.right = pressed;
+    else if (button == BTN_MIDDLE) w->mouse.middle = pressed;
+}
+static void ptr_axis(void* data, struct wl_pointer* p, uint32_t time, uint32_t axis, wl_fixed_t value) {
+    (void)p; (void)time;
+    if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
+    PICOFB_Window* w = data;
+    w->mouse.scroll_delta = (wl_fixed_to_double(value) > 0) ? -1 : (wl_fixed_to_double(value) < 0) ? 1 : 0;
+}
+static void ptr_frame(void* d, struct wl_pointer* p) {(void)d;(void)p;}
+static void ptr_axis_source(void* d, struct wl_pointer* p, uint32_t s) {(void)d;(void)p;(void)s;}
+static void ptr_axis_stop(void* d, struct wl_pointer* p, uint32_t t, uint32_t a) {(void)d;(void)p;(void)t;(void)a;}
+static void ptr_axis_discrete(void* d, struct wl_pointer* p, uint32_t a, int32_t di) {(void)d;(void)p;(void)a;(void)di;}
+static void ptr_axis_value120(void* d, struct wl_pointer* p, uint32_t a, int32_t v) {(void)d;(void)p;(void)a;(void)v;}
+static void ptr_axis_relative_direction(void* d, struct wl_pointer* p, uint32_t a, uint32_t dir) {(void)d;(void)p;(void)a;(void)dir;}
+static const struct wl_pointer_listener ptr_listener = {ptr_enter, ptr_leave, ptr_motion, ptr_button, ptr_axis, ptr_frame, ptr_axis_source, ptr_axis_stop, ptr_axis_discrete, ptr_axis_value120, ptr_axis_relative_direction};
+static void seat_caps(void* data, struct wl_seat* seat, uint32_t caps) {
+    PICOFB_Window* w = data;
+    if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
+        w->dont_touch.kb = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(w->dont_touch.kb, &kb_listener, w);
+    }
+    if (caps & WL_SEAT_CAPABILITY_POINTER) {
+        w->dont_touch.pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(w->dont_touch.pointer, &ptr_listener, w);
+    }
+}
+static void seat_name(void* d, struct wl_seat* s, const char* n) {(void)d;(void)s;(void)n;}
+static const struct wl_seat_listener seat_listener = {seat_caps, seat_name};
+static void xdg_surf_cfg(void* data, struct xdg_surface* xs, uint32_t serial) {
+    PICOFB_Window* w = data;
+    xdg_surface_ack_configure(xs, serial);
+    w->dont_touch.configured = true;
+}
+static const struct xdg_surface_listener xdg_surf_listener = {xdg_surf_cfg};
+static void xdg_top_cfg(void* d, struct xdg_toplevel* t, int32_t w, int32_t h, struct wl_array* s) {(void)d;(void)t;(void)w;(void)h;(void)s;}
+static void xdg_top_close(void* data, struct xdg_toplevel* t) {(void)t; ((PICOFB_Window*)data)->quit = true;}
+static void xdg_top_cfg_bounds(void* d, struct xdg_toplevel* t, int32_t w, int32_t h) {(void)d;(void)t;(void)w;(void)h;}
+static void xdg_top_wm_capabilities(void* d, struct xdg_toplevel* t, struct wl_array* c) {(void)d;(void)t;(void)c;}
+static const struct xdg_toplevel_listener xdg_top_listener = {xdg_top_cfg, xdg_top_close, xdg_top_cfg_bounds, xdg_top_wm_capabilities};
+static void xdg_ping(void* d, struct xdg_wm_base* x, uint32_t serial) {(void)d; xdg_wm_base_pong(x, serial);}
+static const struct xdg_wm_base_listener xdg_listener = {xdg_ping};
+static void reg_global(void* data, struct wl_registry* reg, uint32_t name, const char* iface, uint32_t ver) {
+    (void)ver;
+    PICOFB_Window* w = data;
+    if (strcmp(iface, wl_compositor_interface.name) == 0) w->dont_touch.compositor = wl_registry_bind(reg, name, &wl_compositor_interface, 4);
+    else if (strcmp(iface, wl_shm_interface.name) == 0) w->dont_touch.shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
+    else if (strcmp(iface, xdg_wm_base_interface.name) == 0) {
+        w->dont_touch.xdg_wm_base = wl_registry_bind(reg, name, &xdg_wm_base_interface, 1);
+        xdg_wm_base_add_listener(w->dont_touch.xdg_wm_base, &xdg_listener, w);
+    }
+    else if (strcmp(iface, wl_seat_interface.name) == 0) {
+        w->dont_touch.seat = wl_registry_bind(reg, name, &wl_seat_interface, 5);
+        wl_seat_add_listener(w->dont_touch.seat, &seat_listener, w);
+    }
+}
+static void reg_remove(void* d, struct wl_registry* r, uint32_t n) {(void)d;(void)r;(void)n;}
+static const struct wl_registry_listener reg_listener = {reg_global, reg_remove};
+
+static inline bool PICOFB_init(const char* window_title, uint16_t width, uint16_t height, PICOFB_Window* picofb_window) {
+    if (!picofb_window) return false;
+    memset(&picofb_window->dont_touch, 0, sizeof(PICOFB_DontTouch));
+    picofb_window->width = width; picofb_window->height = height;
+    picofb_window->dont_touch.display = wl_display_connect(NULL);
+    if (!picofb_window->dont_touch.display) return false;
+    picofb_window->dont_touch.registry = wl_display_get_registry(picofb_window->dont_touch.display);
+    wl_registry_add_listener(picofb_window->dont_touch.registry, &reg_listener, picofb_window);
+    wl_display_roundtrip(picofb_window->dont_touch.display);
+    if (!picofb_window->dont_touch.compositor || !picofb_window->dont_touch.shm || !picofb_window->dont_touch.xdg_wm_base) {PICOFB_cleanup(picofb_window); return false;}
+    picofb_window->dont_touch.surface = wl_compositor_create_surface(picofb_window->dont_touch.compositor);
+    picofb_window->dont_touch.xdg_surface = xdg_wm_base_get_xdg_surface(picofb_window->dont_touch.xdg_wm_base, picofb_window->dont_touch.surface);
+    xdg_surface_add_listener(picofb_window->dont_touch.xdg_surface, &xdg_surf_listener, picofb_window);
+    picofb_window->dont_touch.xdg_toplevel = xdg_surface_get_toplevel(picofb_window->dont_touch.xdg_surface);
+    xdg_toplevel_add_listener(picofb_window->dont_touch.xdg_toplevel, &xdg_top_listener, picofb_window);
+    xdg_toplevel_set_title(picofb_window->dont_touch.xdg_toplevel, window_title ? window_title : "PICOFB");
+    xdg_toplevel_set_min_size(picofb_window->dont_touch.xdg_toplevel, width, height);
+    xdg_toplevel_set_max_size(picofb_window->dont_touch.xdg_toplevel, width, height);
+    size_t size = width * height * 4;
+    picofb_window->dont_touch.shm_fd = memfd_create("picofb", MFD_CLOEXEC);
+    if (picofb_window->dont_touch.shm_fd < 0 || ftruncate(picofb_window->dont_touch.shm_fd, size) < 0) {PICOFB_cleanup(picofb_window); return false;}
+    void* data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, picofb_window->dont_touch.shm_fd, 0);
+    if (data == MAP_FAILED) {PICOFB_cleanup(picofb_window); return false;}
+    picofb_window->frame_buffer = (uint32_t*)data;
+    struct wl_shm_pool* pool = wl_shm_create_pool(picofb_window->dont_touch.shm, picofb_window->dont_touch.shm_fd, size);
+    picofb_window->dont_touch.buffer = wl_shm_pool_create_buffer(pool, 0, width, height, width * 4, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    wl_surface_commit(picofb_window->dont_touch.surface);
+    while (!picofb_window->dont_touch.configured && !picofb_window->quit) wl_display_dispatch(picofb_window->dont_touch.display);
+    return true;
+}
+
+static inline void PICOFB_update(PICOFB_Window* picofb_window) {
+    picofb_window->mouse.scroll_delta = 0;
+    wl_display_flush(picofb_window->dont_touch.display);
+    struct pollfd pfd = {wl_display_get_fd(picofb_window->dont_touch.display), POLLIN, 0};
+    if (poll(&pfd, 1, 0) > 0) wl_display_dispatch(picofb_window->dont_touch.display);
+    else wl_display_dispatch_pending(picofb_window->dont_touch.display);
+    wl_surface_attach(picofb_window->dont_touch.surface, picofb_window->dont_touch.buffer, 0, 0);
+    wl_surface_damage(picofb_window->dont_touch.surface, 0, 0, picofb_window->width, picofb_window->height);
+    wl_surface_commit(picofb_window->dont_touch.surface);
+}
+
+static inline void PICOFB_cleanup(PICOFB_Window* picofb_window) {
+    if (picofb_window->frame_buffer) munmap(picofb_window->frame_buffer, picofb_window->width * picofb_window->height * 4);
+    if (picofb_window->dont_touch.buffer) wl_buffer_destroy(picofb_window->dont_touch.buffer);
+    if (picofb_window->dont_touch.shm_fd >= 0) close(picofb_window->dont_touch.shm_fd);
+    if (picofb_window->dont_touch.kb) wl_keyboard_destroy(picofb_window->dont_touch.kb);
+    if (picofb_window->dont_touch.pointer) wl_pointer_destroy(picofb_window->dont_touch.pointer);
+    if (picofb_window->dont_touch.seat) wl_seat_destroy(picofb_window->dont_touch.seat);
+    if (picofb_window->dont_touch.xdg_toplevel) xdg_toplevel_destroy(picofb_window->dont_touch.xdg_toplevel);
+    if (picofb_window->dont_touch.xdg_surface) xdg_surface_destroy(picofb_window->dont_touch.xdg_surface);
+    if (picofb_window->dont_touch.surface) wl_surface_destroy(picofb_window->dont_touch.surface);
+    if (picofb_window->dont_touch.xdg_wm_base) xdg_wm_base_destroy(picofb_window->dont_touch.xdg_wm_base);
+    if (picofb_window->dont_touch.shm) wl_shm_destroy(picofb_window->dont_touch.shm);
+    if (picofb_window->dont_touch.compositor) wl_compositor_destroy(picofb_window->dont_touch.compositor);
+    if (picofb_window->dont_touch.registry) wl_registry_destroy(picofb_window->dont_touch.registry);
+    if (picofb_window->dont_touch.display) wl_display_disconnect(picofb_window->dont_touch.display);
+}
+
+
+#endif // PICOFB_WAYLAND_BACKEND
 
 #ifdef PICOFB_WIN32_BACKEND
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <string.h>
 
 typedef struct {
-    size_t width;
-    size_t height;
-    uint32_t* frame_buffer;
-    bool key_states[PICOFB_Key_COUNT];
-    bool quit;
-
     HWND hwnd;
     HDC hdc;
     HDC hdc_mem;
     HBITMAP hbitmap;
     HBITMAP hbitmap_old;
     WNDCLASSEX wc;
+    MSG msg;
     char class_name_storage[64];
-    void* dib_bits;
+} PICOFB_DontTouch;
+
+typedef struct {
+    uint32_t* frame_buffer;
+    uint16_t width, height;
+    bool keyboard[PICOFB_Key_COUNT]; PICOFB_Mouse mouse;
+    bool quit;
+    PICOFB_DontTouch dont_touch;
 } PICOFB_Window;
 
 static inline PICOFB_Key PICOFB_from_win32_vk(WPARAM vk, LPARAM lparam) {
@@ -434,7 +696,7 @@ static inline PICOFB_Key PICOFB_from_win32_vk(WPARAM vk, LPARAM lparam) {
         // Control keys
         case VK_ESCAPE: return PICOFB_Key_ESC;
         case VK_SPACE: return PICOFB_Key_SPACE;
-        case VK_RETURN: return extended ? PICOFB_Key_KP_ENTER : PICOFB_Key_ENTER;
+        case VK_RETURN: return PICOFB_Key_ENTER;
         case VK_TAB: return PICOFB_Key_TAB;
         case VK_BACK: return PICOFB_Key_BACKSPACE;
         case VK_DELETE: return PICOFB_Key_DELETE;
@@ -461,26 +723,8 @@ static inline PICOFB_Key PICOFB_from_win32_vk(WPARAM vk, LPARAM lparam) {
         case VK_OEM_PERIOD: return PICOFB_Key_PERIOD;
         case VK_OEM_2: return PICOFB_Key_SLASH;
         case VK_OEM_3: return PICOFB_Key_GRAVE;
-        // Numpad
-        case VK_NUMPAD0: return PICOFB_Key_KP_0;
-        case VK_NUMPAD1: return PICOFB_Key_KP_1;
-        case VK_NUMPAD2: return PICOFB_Key_KP_2;
-        case VK_NUMPAD3: return PICOFB_Key_KP_3;
-        case VK_NUMPAD4: return PICOFB_Key_KP_4;
-        case VK_NUMPAD5: return PICOFB_Key_KP_5;
-        case VK_NUMPAD6: return PICOFB_Key_KP_6;
-        case VK_NUMPAD7: return PICOFB_Key_KP_7;
-        case VK_NUMPAD8: return PICOFB_Key_KP_8;
-        case VK_NUMPAD9: return PICOFB_Key_KP_9;
-        case VK_MULTIPLY: return PICOFB_Key_KP_MULTIPLY;
-        case VK_ADD: return PICOFB_Key_KP_PLUS;
-        case VK_SUBTRACT: return PICOFB_Key_KP_MINUS;
-        case VK_DIVIDE: return PICOFB_Key_KP_DIVIDE;
-        case VK_DECIMAL: return PICOFB_Key_KP_PERIOD;
         // Lock keys
         case VK_CAPITAL: return PICOFB_Key_CAPSLOCK;
-        case VK_NUMLOCK: return PICOFB_Key_NUMLOCK;
-        case VK_SCROLL: return PICOFB_Key_SCROLLLOCK;
         
         default: return PICOFB_Key_UNKNOWN;
     }
@@ -493,7 +737,7 @@ static LRESULT CALLBACK PICOFB_window_proc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_SYSKEYDOWN: {
             if (window) {
                 PICOFB_Key key = PICOFB_from_win32_vk(wparam, lparam);
-                if (key != PICOFB_Key_UNKNOWN && !(lparam & 0x40000000)) window->key_states[key] = true;
+                if (key != PICOFB_Key_UNKNOWN && !(lparam & 0x40000000)) window->keyboard[key] = true;
             }
             return 0;
         }
@@ -501,50 +745,62 @@ static LRESULT CALLBACK PICOFB_window_proc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_SYSKEYUP: {
             if (window) {
                 PICOFB_Key key = PICOFB_from_win32_vk(wparam, lparam);
-                if (key != PICOFB_Key_UNKNOWN) window->key_states[key] = false;
+                if (key != PICOFB_Key_UNKNOWN) window->keyboard[key] = false;
             }
             return 0;
         }
+        case WM_LBUTTONDOWN: window->mouse.left = true; return 0;
+        case WM_LBUTTONUP: window->mouse.left = false; return 0;
+        case WM_RBUTTONDOWN: window->mouse.right = true; return 0;
+        case WM_RBUTTONUP: window->mouse.right = false; return 0;
+        case WM_MBUTTONDOWN: window->mouse.middle = true; return 0;
+        case WM_MBUTTONUP: window->mouse.middle = false; return 0;
+        case WM_MOUSEMOVE:
+            window->mouse.x = LOWORD(lparam);
+            window->mouse.y = HIWORD(lparam);
+            return 0;
+        case WM_MOUSEWHEEL:
+            window->mouse.scroll_delta = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            return 0;
         case WM_CLOSE: if (window) window->quit = true; return 0;
         case WM_DESTROY: PostQuitMessage(0); return 0;
         default: return DefWindowProc(hwnd, msg, wparam, lparam);
     }
 }
-static inline bool PICOFB_init(const char* window_title, size_t width, size_t height, uint32_t* frame_buffer, PICOFB_Window* picofb_window) {
-    if (!picofb_window || !frame_buffer) return false;
+static inline bool PICOFB_init(const char* window_title, uint16_t width, uint16_t height, PICOFB_Window* picofb_window) {
+    if (!picofb_window) return false;
     picofb_window->width=width; picofb_window->height=height; 
-    picofb_window->frame_buffer=frame_buffer;
-    snprintf(picofb_window->class_name_storage, sizeof(picofb_window->class_name_storage), "PICOFB_%p", (void*)picofb_window);
-    picofb_window->wc.cbSize = sizeof(WNDCLASSEX);
-    picofb_window->wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-    picofb_window->wc.lpfnWndProc = PICOFB_window_proc;
-    picofb_window->wc.cbClsExtra = 0;
-    picofb_window->wc.cbWndExtra = 0;
-    picofb_window->wc.hInstance = GetModuleHandle(NULL);
-    picofb_window->wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    picofb_window->wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    picofb_window->wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    picofb_window->wc.lpszMenuName = NULL;
-    picofb_window->wc.lpszClassName = picofb_window->class_name_storage;
-    picofb_window->wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-    if (!RegisterClassEx(&picofb_window->wc)) return false;
+    snprintf(picofb_window->dont_touch.class_name_storage, sizeof(picofb_window->dont_touch.class_name_storage), "PICOFB_%p", (void*)picofb_window);
+    picofb_window->dont_touch.wc.cbSize = sizeof(WNDCLASSEX);
+    picofb_window->dont_touch.wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    picofb_window->dont_touch.wc.lpfnWndProc = PICOFB_window_proc;
+    picofb_window->dont_touch.wc.cbClsExtra = 0;
+    picofb_window->dont_touch.wc.cbWndExtra = 0;
+    picofb_window->dont_touch.wc.hInstance = GetModuleHandle(NULL);
+    picofb_window->dont_touch.wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    picofb_window->dont_touch.wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    picofb_window->dont_touch.wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    picofb_window->dont_touch.wc.lpszMenuName = NULL;
+    picofb_window->dont_touch.wc.lpszClassName = picofb_window->dont_touch.class_name_storage;
+    picofb_window->dont_touch.wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    if (!RegisterClassEx(&picofb_window->dont_touch.wc)) return false;
     RECT rect = {0, 0, width, height};
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&rect, style, FALSE);
-    picofb_window->hwnd = CreateWindowEx(0, picofb_window->class_name_storage, window_title ? window_title : "PICOFB", style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, GetModuleHandle(NULL), NULL);
-    if (!picofb_window->hwnd) {UnregisterClass(picofb_window->class_name_storage, GetModuleHandle(NULL)); return false;}
-    SetWindowLongPtr(picofb_window->hwnd, GWLP_USERDATA, (LONG_PTR)picofb_window);
-    picofb_window->hdc = GetDC(picofb_window->hwnd);
-    if (!picofb_window->hdc) {
-        DestroyWindow(picofb_window->hwnd);
-        UnregisterClass(picofb_window->class_name_storage, GetModuleHandle(NULL));
+    picofb_window->dont_touch.hwnd = CreateWindowEx(0, picofb_window->dont_touch.class_name_storage, window_title ? window_title : "PICOFB", style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, GetModuleHandle(NULL), NULL);
+    if (!picofb_window->dont_touch.hwnd) {UnregisterClass(picofb_window->dont_touch.class_name_storage, GetModuleHandle(NULL)); return false;}
+    SetWindowLongPtr(picofb_window->dont_touch.hwnd, GWLP_USERDATA, (LONG_PTR)picofb_window);
+    picofb_window->dont_touch.hdc = GetDC(picofb_window->dont_touch.hwnd);
+    if (!picofb_window->dont_touch.hdc) {
+        DestroyWindow(picofb_window->dont_touch.hwnd);
+        UnregisterClass(picofb_window->dont_touch.class_name_storage, GetModuleHandle(NULL));
         return false;
     }
-    picofb_window->hdc_mem = CreateCompatibleDC(picofb_window->hdc);
-    if (!picofb_window->hdc_mem) {
-        ReleaseDC(picofb_window->hwnd, picofb_window->hdc);
-        DestroyWindow(picofb_window->hwnd);
-        UnregisterClass(picofb_window->class_name_storage, GetModuleHandle(NULL));
+    picofb_window->dont_touch.hdc_mem = CreateCompatibleDC(picofb_window->dont_touch.hdc);
+    if (!picofb_window->dont_touch.hdc_mem) {
+        ReleaseDC(picofb_window->dont_touch.hwnd, picofb_window->dont_touch.hdc);
+        DestroyWindow(picofb_window->dont_touch.hwnd);
+        UnregisterClass(picofb_window->dont_touch.class_name_storage, GetModuleHandle(NULL));
         return false;
     }
     BITMAPINFO bmi = {0};
@@ -554,126 +810,57 @@ static inline bool PICOFB_init(const char* window_title, size_t width, size_t he
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
-    picofb_window->hbitmap = CreateDIBSection(picofb_window->hdc_mem, &bmi, DIB_RGB_COLORS, &picofb_window->dib_bits, NULL, 0);
-    if (!picofb_window->hbitmap) {
-        DeleteDC(picofb_window->hdc_mem);
-        ReleaseDC(picofb_window->hwnd, picofb_window->hdc);
-        DestroyWindow(picofb_window->hwnd);
-        UnregisterClass(picofb_window->class_name_storage, GetModuleHandle(NULL));
+    picofb_window->dont_touch.hbitmap = CreateDIBSection(picofb_window->dont_touch.hdc_mem, &bmi, DIB_RGB_COLORS, (void**)&picofb_window->frame_buffer, NULL, 0);
+    if (!picofb_window->dont_touch.hbitmap) {
+        DeleteDC(picofb_window->dont_touch.hdc_mem);
+        ReleaseDC(picofb_window->dont_touch.hwnd, picofb_window->dont_touch.hdc);
+        DestroyWindow(picofb_window->dont_touch.hwnd);
+        UnregisterClass(picofb_window->dont_touch.class_name_storage, GetModuleHandle(NULL));
         return false;
     }
-    picofb_window->hbitmap_old = (HBITMAP)SelectObject(picofb_window->hdc_mem, picofb_window->hbitmap);
-    ShowWindow(picofb_window->hwnd, SW_SHOW);
-    UpdateWindow(picofb_window->hwnd);
+    picofb_window->dont_touch.hbitmap_old = (HBITMAP)SelectObject(picofb_window->dont_touch.hdc_mem, picofb_window->dont_touch.hbitmap);
+    ShowWindow(picofb_window->dont_touch.hwnd, SW_SHOW);
     return true;
 }
-
-static inline uint32_t PICOFB_color_rgb(uint8_t r, uint8_t g, uint8_t b) {return (0xFFu << 24) | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;}
-static inline void PICOFB_set_pixel(PICOFB_Window* picofb_window, size_t x, size_t y, uint32_t color){picofb_window->frame_buffer[y*picofb_window->width+x] = color;}
-
 static inline void PICOFB_update(PICOFB_Window* picofb_window) {
-    MSG msg;
-    while (PeekMessage(&msg, picofb_window->hwnd, 0, 0, PM_REMOVE)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-        if (msg.message == WM_QUIT) picofb_window->quit = true;
+    picofb_window->mouse.scroll_delta = 0;
+    while (PeekMessage(&picofb_window->dont_touch.msg, picofb_window->dont_touch.hwnd, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&picofb_window->dont_touch.msg);
+        DispatchMessage(&picofb_window->dont_touch.msg);
+        if (picofb_window->dont_touch.msg.message == WM_QUIT) picofb_window->quit = true;
     }
-    memcpy(picofb_window->dib_bits, picofb_window->frame_buffer, picofb_window->width * picofb_window->height * sizeof(uint32_t));
-    BitBlt(picofb_window->hdc, 0, 0, picofb_window->width, picofb_window->height, picofb_window->hdc_mem, 0, 0, SRCCOPY);
+    BitBlt(picofb_window->dont_touch.hdc, 0, 0, picofb_window->width, picofb_window->height, picofb_window->dont_touch.hdc_mem, 0, 0, SRCCOPY);
 }
-
-static inline bool PICOFB_is_input(PICOFB_Window* picofb_window, PICOFB_Key key) {
-    if (key < 0 || key >= PICOFB_Key_COUNT) return false;
-    return picofb_window->key_states[key];
-}
-
 static inline void PICOFB_cleanup(PICOFB_Window* picofb_window) {
-    if (picofb_window->hbitmap) {
-        if (picofb_window->hdc_mem && picofb_window->hbitmap_old) SelectObject(picofb_window->hdc_mem, picofb_window->hbitmap_old);
-        DeleteObject(picofb_window->hbitmap);
+    if (picofb_window->dont_touch.hbitmap) {
+        if (picofb_window->dont_touch.hdc_mem && picofb_window->dont_touch.hbitmap_old) SelectObject(picofb_window->dont_touch.hdc_mem, picofb_window->dont_touch.hbitmap_old);
+        DeleteObject(picofb_window->dont_touch.hbitmap);
     }
-    if (picofb_window->hdc_mem) DeleteDC(picofb_window->hdc_mem);
-    if (picofb_window->hdc && picofb_window->hwnd) ReleaseDC(picofb_window->hwnd, picofb_window->hdc);
-    if (picofb_window->hwnd) DestroyWindow(picofb_window->hwnd);
-    if (picofb_window->class_name_storage[0]) UnregisterClass(picofb_window->class_name_storage, GetModuleHandle(NULL));
-}
-
-static inline void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *path) {
-    FILE *f = fopen(path, "wb");
-    if (!f) return;
-    fprintf(f, "P6 %zu %zu 255\n", picofb_window->width, picofb_window->height);
-    for (size_t y = 0; y < picofb_window->height; ++y) {
-        for (size_t x = 0; x < picofb_window->width; ++x) {
-            uint32_t px = picofb_window->frame_buffer[y*picofb_window->width+x];
-            unsigned char rgb[3] = { px & 0xFF, (px >> 8) & 0xFF, (px >> 16) & 0xFF };
-            fwrite(rgb, 1, 3, f);
-        }
-    }
-    fclose(f);
+    if (picofb_window->dont_touch.hdc_mem) DeleteDC(picofb_window->dont_touch.hdc_mem);
+    if (picofb_window->dont_touch.hdc && picofb_window->dont_touch.hwnd) ReleaseDC(picofb_window->dont_touch.hwnd, picofb_window->dont_touch.hdc);
+    if (picofb_window->dont_touch.hwnd) DestroyWindow(picofb_window->dont_touch.hwnd);
+    if (picofb_window->dont_touch.class_name_storage[0]) UnregisterClass(picofb_window->dont_touch.class_name_storage, GetModuleHandle(NULL));
 }
 
 #endif // PICOFB_WIN32_BACKEND
-
-#ifdef PICOFB_WAYLAND_BACKEND
-
-// ///////////////////////////////////WIP///////////////////////////////////////////
-
-#include <wayland-client.h>
-
-typedef struct {
-    size_t width;
-    size_t height;
-    uint32_t* frame_buffer;
-    bool key_states[PICOFB_Key_COUNT];
-    bool quit;
-
-    struct wl_display *display;
-} PICOFB_Window;
-
-//static inline PICOFB_Key PICOFB_from_sdl_scancode(SDL_Scancode sc);
-
-// static inline bool PICOFB_init(const char* window_title, size_t width, size_t height, uint32_t* frame_buffer, PICOFB_Window* picofb_window) {
-//     picofb_window->width=width; picofb_window->height=height; 
-//     picofb_window->frame_buffer=frame_buffer;
-//     if (!picofb_window || !frame_buffer) return false;
-//     picofb_window->display = wl_display_connect(NULL);
-//     if (!picofb_window->display) return false;
-//     return true;
-// }
-
-// static inline uint32_t PICOFB_color_rgb(uint8_t r, uint8_t g, uint8_t b){return (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;}
-// static inline void PICOFB_set_pixel(PICOFB_Window* picofb_window, size_t x, size_t y, uint32_t color){picofb_window->frame_buffer[y*picofb_window->width+x] = color;}
-
-// static inline void PICOFB_update(PICOFB_Window* picofb_window){
-//     picofb_window->quit = wl_display_dispatch(display)==-1;
-// }
-// static inline bool PICOFB_is_input(PICOFB_Window* picofb_window, PICOFB_Key key){
-//     return true;
-// }
-// static inline void PICOFB_cleanup(PICOFB_Window* picofb_window){
-//     wl_display_disconnect(picofb_window->display);
-// }
-// static inline void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *path){
-
-// }
-
-#endif // PICOFB_WAYLAND_BACKEND
 
 #ifdef PICOFB_SDL_BACKEND
 
 #include <SDL2/SDL.h>
 
 typedef struct {
-    size_t width;
-    size_t height;
-    uint32_t* frame_buffer;
-    bool key_states[PICOFB_Key_COUNT];
-    bool quit;
-
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Texture* texture;
     SDL_Event event;
+} PICOFB_DontTouch;
+
+typedef struct {
+    uint32_t* frame_buffer;
+    uint16_t width, height;
+    bool keyboard[PICOFB_Key_COUNT]; PICOFB_Mouse mouse;
+    bool quit;
+    PICOFB_DontTouch dont_touch;
 } PICOFB_Window;
 
 static inline PICOFB_Key PICOFB_from_sdl_scancode(SDL_Scancode sc) {
@@ -767,97 +954,115 @@ static inline PICOFB_Key PICOFB_from_sdl_scancode(SDL_Scancode sc) {
         case SDL_SCANCODE_PERIOD: return PICOFB_Key_PERIOD;
         case SDL_SCANCODE_SLASH: return PICOFB_Key_SLASH;
         case SDL_SCANCODE_GRAVE: return PICOFB_Key_GRAVE;
-        // Numpad
-        case SDL_SCANCODE_KP_0: return PICOFB_Key_KP_0;
-        case SDL_SCANCODE_KP_1: return PICOFB_Key_KP_1;
-        case SDL_SCANCODE_KP_2: return PICOFB_Key_KP_2;
-        case SDL_SCANCODE_KP_3: return PICOFB_Key_KP_3;
-        case SDL_SCANCODE_KP_4: return PICOFB_Key_KP_4;
-        case SDL_SCANCODE_KP_5: return PICOFB_Key_KP_5;
-        case SDL_SCANCODE_KP_6: return PICOFB_Key_KP_6;
-        case SDL_SCANCODE_KP_7: return PICOFB_Key_KP_7;
-        case SDL_SCANCODE_KP_8: return PICOFB_Key_KP_8;
-        case SDL_SCANCODE_KP_9: return PICOFB_Key_KP_9;
-        case SDL_SCANCODE_KP_MULTIPLY: return PICOFB_Key_KP_MULTIPLY;
-        case SDL_SCANCODE_KP_PLUS: return PICOFB_Key_KP_PLUS;
-        case SDL_SCANCODE_KP_MINUS: return PICOFB_Key_KP_MINUS;
-        case SDL_SCANCODE_KP_DIVIDE: return PICOFB_Key_KP_DIVIDE;
-        case SDL_SCANCODE_KP_ENTER: return PICOFB_Key_KP_ENTER;
-        case SDL_SCANCODE_KP_PERIOD: return PICOFB_Key_KP_PERIOD;
         // Lock keys
         case SDL_SCANCODE_CAPSLOCK: return PICOFB_Key_CAPSLOCK;
-        case SDL_SCANCODE_NUMLOCKCLEAR: return PICOFB_Key_NUMLOCK;
-        case SDL_SCANCODE_SCROLLLOCK: return PICOFB_Key_SCROLLLOCK;
         
         default: return PICOFB_Key_UNKNOWN;
     }
 }
 
-static inline bool PICOFB_init(const char* window_title, size_t width, size_t height, uint32_t* frame_buffer, PICOFB_Window* picofb_window) {
-    if (!picofb_window || !frame_buffer) return false;
+static inline bool PICOFB_init(const char* window_title, uint16_t width, uint16_t height, PICOFB_Window* picofb_window) {
+    if (!picofb_window) return false;
+    picofb_window->frame_buffer=calloc(width * height, sizeof(uint32_t));
+    if (!picofb_window->frame_buffer) return false;
     picofb_window->width=width; picofb_window->height=height; 
-    picofb_window->frame_buffer=frame_buffer;
-    SDL_Init(SDL_INIT_VIDEO);
-    picofb_window->window = SDL_CreateWindow(window_title ? window_title : "PICOFB", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, 0);
-    picofb_window->renderer = SDL_CreateRenderer(picofb_window->window, -1, SDL_RENDERER_ACCELERATED);
-    picofb_window->texture = SDL_CreateTexture(picofb_window->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
-    if (!(picofb_window->window && picofb_window->renderer && picofb_window->texture)) return false;
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) return false;
+    picofb_window->dont_touch.window = SDL_CreateWindow(window_title ? window_title : "PICOFB", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, 0);
+    picofb_window->dont_touch.renderer = SDL_CreateRenderer(picofb_window->dont_touch.window, -1, SDL_RENDERER_ACCELERATED);
+    picofb_window->dont_touch.texture = SDL_CreateTexture(picofb_window->dont_touch.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (!(picofb_window->dont_touch.window && picofb_window->dont_touch.renderer && picofb_window->dont_touch.texture)) return false;
     return true;
 }
-
-static inline uint32_t PICOFB_color_rgb(uint8_t r, uint8_t g, uint8_t b){return (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;}
-static inline void PICOFB_set_pixel(PICOFB_Window* picofb_window, size_t x, size_t y, uint32_t color){picofb_window->frame_buffer[y*picofb_window->width+x] = color;}
-
 static inline void PICOFB_update(PICOFB_Window* picofb_window) {
-    SDL_UpdateTexture(picofb_window->texture, NULL, picofb_window->frame_buffer, picofb_window->width * sizeof(uint32_t));
-    SDL_RenderClear(picofb_window->renderer);
-    SDL_RenderCopy(picofb_window->renderer, picofb_window->texture, NULL, NULL);
-    SDL_RenderPresent(picofb_window->renderer);
-    while (SDL_PollEvent(&picofb_window->event)) {
-        switch(picofb_window->event.type) {
+    picofb_window->mouse.scroll_delta = 0;
+    SDL_UpdateTexture(picofb_window->dont_touch.texture, NULL, picofb_window->frame_buffer, picofb_window->width * sizeof(uint32_t));
+    SDL_RenderCopy(picofb_window->dont_touch.renderer, picofb_window->dont_touch.texture, NULL, NULL);
+    SDL_RenderPresent(picofb_window->dont_touch.renderer);
+    while (SDL_PollEvent(&picofb_window->dont_touch.event)) {
+        switch(picofb_window->dont_touch.event.type) {
             case SDL_KEYDOWN: {
-                PICOFB_Key key = PICOFB_from_sdl_scancode(picofb_window->event.key.keysym.scancode);
-                if (key != PICOFB_Key_UNKNOWN) picofb_window->key_states[key] = true;
+                PICOFB_Key key = PICOFB_from_sdl_scancode(picofb_window->dont_touch.event.key.keysym.scancode);
+                if (key != PICOFB_Key_UNKNOWN) picofb_window->keyboard[key] = true;
                 break;
             }
             case SDL_KEYUP: {
-                PICOFB_Key key = PICOFB_from_sdl_scancode(picofb_window->event.key.keysym.scancode);
-                if (key != PICOFB_Key_UNKNOWN) picofb_window->key_states[key] = false;
+                PICOFB_Key key = PICOFB_from_sdl_scancode(picofb_window->dont_touch.event.key.keysym.scancode);
+                if (key != PICOFB_Key_UNKNOWN) picofb_window->keyboard[key] = false;
                 break;
             }
+            case SDL_MOUSEBUTTONDOWN:
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_LEFT) picofb_window->mouse.left = true;
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_RIGHT) picofb_window->mouse.right = true;
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_MIDDLE) picofb_window->mouse.middle = true;
+                break;
+            case SDL_MOUSEBUTTONUP:
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_LEFT) picofb_window->mouse.left = false;
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_RIGHT) picofb_window->mouse.right = false;
+                if (picofb_window->dont_touch.event.button.button == SDL_BUTTON_MIDDLE) picofb_window->mouse.middle = false;
+                break;
+            case SDL_MOUSEMOTION:
+                picofb_window->mouse.x = picofb_window->dont_touch.event.motion.x;
+                picofb_window->mouse.y = picofb_window->dont_touch.event.motion.y;
+                break;
+            case SDL_MOUSEWHEEL:
+                picofb_window->mouse.scroll_delta = picofb_window->dont_touch.event.wheel.y;
+                break;
             case SDL_QUIT:
                 picofb_window->quit = true;
                 break;
         }
     }
 }
-
-static inline bool PICOFB_is_input(PICOFB_Window* picofb_window, PICOFB_Key key) {
-    if (key < 0 || key >= PICOFB_Key_COUNT) return false;
-    return picofb_window->key_states[key];
+static inline void PICOFB_cleanup(PICOFB_Window* picofb_window) {
+    SDL_DestroyTexture(picofb_window->dont_touch.texture);
+    SDL_DestroyRenderer(picofb_window->dont_touch.renderer);
+    SDL_DestroyWindow(picofb_window->dont_touch.window);
+    SDL_Quit();
+    if (picofb_window->frame_buffer) free(picofb_window->frame_buffer);
 }
 
-static inline void PICOFB_cleanup(PICOFB_Window* picofb_window) {
-    SDL_DestroyTexture(picofb_window->texture);
-    SDL_DestroyRenderer(picofb_window->renderer);
-    SDL_DestroyWindow(picofb_window->window);
-    SDL_Quit();
+#endif // PICOFB_SDL_BACKEND
+
+//================================================================
+// UTIL FUNCTIONS
+//================================================================
+
+#ifdef PICOFB_WIN32_BACKEND
+    static inline uint32_t PICOFB_color_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {return ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;}
+#else
+    static inline uint32_t PICOFB_color_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;}
+#endif
+
+static inline void PICOFB_set_pixel(PICOFB_Window* picofb_window, uint16_t x, uint16_t y, uint32_t color){
+    picofb_window->frame_buffer[y*picofb_window->width+x] = color;
+}
+static inline void PICOFB_clear(PICOFB_Window* picofb_window){
+    memset(picofb_window->frame_buffer, 0, picofb_window->width * picofb_window->height * sizeof(uint32_t));
+}
+
+static inline bool PICOFB_key_pressed(PICOFB_Window* picofb_window, PICOFB_Key key) {
+    if (key < 0 || key >= PICOFB_Key_COUNT) return false;
+    return picofb_window->keyboard[key];
 }
 
 static inline void PICOFB_save_ppm(PICOFB_Window* picofb_window, const char *path){
     FILE *f = fopen(path, "wb");
     if (!f) return;
-    fprintf(f, "P6 %zu %zu 255\n", picofb_window->width, picofb_window->height);
+    fprintf(f, "P6 %d %d 255\n", picofb_window->width, picofb_window->height);
     for (size_t y = 0; y < picofb_window->height; ++y){
         for (size_t x = 0; x < picofb_window->width; ++x){
             uint32_t px = picofb_window->frame_buffer[y*picofb_window->width+x];
-            unsigned char rgb[3] = { (px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF };
+            #ifdef PICOFB_WIN32_BACKEND
+                unsigned char rgb[3] = { px & 0xFF, (px >> 8) & 0xFF, (px >> 16) & 0xFF };
+            #else
+                unsigned char rgb[3] = { (px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF };
+            #endif
             fwrite(rgb, 1, 3, f);
         }
     }
     fclose(f);
 }
 
-#endif // PICOFB_SDL_BACKEND
+//================================================================
 
 #endif // _PICOFB_H
